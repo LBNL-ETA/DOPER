@@ -1,0 +1,12 @@
+# Python compiled files #
+#########################
+*.pyc
+
+# JSON files #
+##############
+*.json
+
+# ipynb checkpoints #
+###################
+*checkpoint.ipynb
+**/.ipynb_checkpoints/*
