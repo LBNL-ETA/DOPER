@@ -18,5 +18,7 @@ def test_tariff():
     This is a test to verify the tariff module of DOPER.
     """
     import doper
+    from doper.data.tariff import get_tariff
+    tariff = get_tariff('e19-2020')
     tariff = doper.get_tariff('e19-2020')
     assert tariff['name'].startswith('PG&E E-19')
