@@ -1,12 +1,21 @@
 # Python compiled files #
 #########################
 *.pyc
+build/*
+dist/*
+*egg*/*
 
 # JSON files #
 ##############
 *.json
 
 # ipynb checkpoints #
-###################
+#####################
 *checkpoint.ipynb
 **/.ipynb_checkpoints/*
+
+
+# solvers #
+###########
+doper/solvers/Linux64/*
+doper/solvers/Windows64/*
