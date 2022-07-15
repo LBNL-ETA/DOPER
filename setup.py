@@ -4,6 +4,7 @@ Setup file for the Distributed Optimal and Predictive Energy Resources.
 
 import os
 import sys
+import json
 import setuptools
 import subprocess as sp
 
@@ -20,8 +21,8 @@ with open('requirements.txt', 'r', encoding='utf8') as f:
     install_requires = f.read().splitlines()
 
 # version
-import doper.__init__ as base
-__version__ = base.__version__
+with open('doper/__init__.py', 'r', encoding='utf8') as f:
+    version = json.loads(f.read().split('__version__ = ')[1])
 
 # setup solvers
 if INSTALL_SOLVERS:
@@ -34,7 +35,7 @@ if INSTALL_SOLVERS:
 
 setuptools.setup(
     name="DOPER",
-    version=__version__,
+    version=version,
     author="Gehbauer, Christoph",
     description="Distributed Optimal and Predictive Energy Resources",
     long_description=long_description,
