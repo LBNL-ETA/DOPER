@@ -49,7 +49,11 @@ setuptools.setup(
         "Operating System :: OS Independent",
     ],
     packages=['doper'],
-    package_data={'': ['*.txt.', '*.md'], 'doper': ['solvers/*', 'solvers/Linux64/*', 'solvers/Windows64/*']},
+    package_data={'': ['*.txt.', '*.md'], 
+                  'doper': ['solvers/*',
+                            'solvers/Linux64/*',
+                            'solvers/Windows64/*',
+                            'data/*']},
     include_package_data=True,
     python_requires=">=3.6",
     install_requires=install_requires
