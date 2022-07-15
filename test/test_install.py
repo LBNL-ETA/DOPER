@@ -17,8 +17,19 @@ def test_tariff():
     """
     This is a test to verify the tariff module of DOPER.
     """
+    #import doper
+    #from doper.data.tariff import get_tariff
+    #tariff = get_tariff('e19-2020')
+    
+    import os
     import doper
-    from doper.data.tariff import get_tariff
-    tariff = get_tariff('e19-2020')
+    solver = doper.get_solver('cbc')
+    print(os.path.join(solver, '..', '..'))
+    print(os.listdir(os.path.join(solver.replace('cbc', ''), '..', '..')))
+    with open(os.path.join(solver.replace('cbc', ''), '..', '..', '__init__.py')) as f:
+        print(f.read())
+    
     tariff = doper.get_tariff('e19-2020')
     assert tariff['name'].startswith('PG&E E-19')
+    
+    print(errrrr)
