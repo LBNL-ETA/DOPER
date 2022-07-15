@@ -1,1 +1,0 @@
-sed -i 's/\r$//' setup_solvers.sh
