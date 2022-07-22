@@ -168,9 +168,9 @@ To illustrate the DOPER functionality, example Jupyter notebooks can be found [h
 
 [Example 1](https://github.com/LBNL-ETA/DOPER/blob/master/examples/DOPER%20Example%20-%20Battery%20Storage.ipynb) shows the optimal dispatch of two stantionary batteries for a medium-sized office building with behind-the-meter photovoltaic system.
 
-[Example 2](https://github.com/LBNL-ETA/DOPER/blob/master/examples/DOPER%20Example%20-%20Fleet%20Electric%20Vehicles.ipynb) shows the optimal dispatch of a fleet of three electric vehicles for a medium-sized office building with behind-the-meter photovoltaic system. EV control uses the same technology model as stationary battery storage, but includes additional inputs defining the availability and external load from vehicle use.
+[Example 2](https://github.com/LBNL-ETA/DOPER/blob/master/examples/DOPER%20Example%20-%20EV%20Fleet.ipynb) shows the optimal dispatch of a fleet of three electric vehicles for a medium-sized office building with behind-the-meter photovoltaic system. EV control uses the same technology model as stationary battery storage, but includes additional inputs defining the availability and external load from vehicle use.
 
-[Example 3](https://github.com/LBNL-ETA/DOPER/blob/master/examples/DOPER%20Example%20-%20Generators.ipynb) shows the optimal dispatch of two generators for a medium-sized office building with behind-the-meter photovoltaic system. The example illustrates the use of generator assets for both blue-sky and outage constrained operation.
+[Example 3](https://github.com/LBNL-ETA/DOPER/blob/master/examples/DOPER%20Example%20-%20Generator.ipynb) shows the optimal dispatch of two generators for a medium-sized office building with behind-the-meter photovoltaic system. The example illustrates the use of generator assets for both blue-sky and outage constrained operation.
 
 [Example 4](https://github.com/LBNL-ETA/DOPER/blob/master/examples/DOPER%20Example%20-%20Load%20Control.ipynb) shows the optimal dispatch of load control within a medium-sized office building with behind-the-meter photovoltaic system. The example illustrates the use of load shedding for both economic objectives, as well as to increase survivability during grid outage.
 
