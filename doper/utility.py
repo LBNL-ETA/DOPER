@@ -15,7 +15,14 @@ import pandas as pd
 import numpy as np
 import logging
 
-root = os.path.dirname(os.path.abspath(__file__))
+def get_root(f=None):
+    try:
+        if not f:
+            f = __file__
+        root = os.path.dirname(os.path.abspath(f))
+    except:
+        root = os.getcwd()
+    return root
 
 def pandas_to_dict(df, columns=None, convertTs=False):
     '''
@@ -97,26 +104,16 @@ def pyomo_read_parameter(temp):
         d[k] = v
     return d
     
-def get_solver(solver, solver_dir='solvers'):
+def get_solver(solver, solver_dir=os.path.join(get_root(), 'solvers')):
     '''
         Utility to return the solverpath readable for Pyomo.
     '''
     system = platform.system()
     bit = '64' if sys.maxsize > 2**32 else '32'
-    if system == 'Windows': return os.path.join(root, solver_dir, system+bit, solver+'.exe')
-    else: return os.path.join(root, solver_dir, system+bit, solver)
+    if system == 'Windows': return os.path.join(solver_dir, system+bit, solver+'.exe')
+    else: return os.path.join(solver_dir, system+bit, solver)
    
     
-def get_root(f=None):
-    try:
-        if not f:
-            f = __file__
-        root = os.path.dirname(os.path.abspath(f))
-    except:
-        root = os.getcwd()
-    return root
-
-
 def extract_properties(parameter, tech_name, prop_name, set_list=None):
     '''
     

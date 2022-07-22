@@ -25,8 +25,7 @@ def get_root(f=None):
     return root
 root = get_root()
 
-#sys.path.insert(0, os.path.join(root, '..'))
-from .utility import pandas_to_dict, add_second_index, pyomo_read_parameter, plot_streams, get_root, constructNodeInput, mapExternalGen
+from ..utility import pandas_to_dict, add_second_index, pyomo_read_parameter, plot_streams, get_root, constructNodeInput, mapExternalGen
 
 
 def base_model(inputs, parameter):
@@ -59,7 +58,7 @@ def base_model(inputs, parameter):
     model.timestep_scale_fwd = \
         {inputs.index[i]:3600/np.diff(inputs.index.values)[i] for i in range(len(inputs.index)-1)} # in hours
     model.periods = Set(initialize=parameter['tariff']['energy'].keys(), doc='demand periods')
-    # model.batteries = Set(initialize=range(parameter['battery']['count']), doc='batteries in the system')
+   
     accounting_ts = [t for t in model.ts][0:-2] # Timestep for accounting (cutoff last timestep)
     model.accounting_ts = accounting_ts
     
@@ -71,12 +70,17 @@ def base_model(inputs, parameter):
     elif len(parameter['network']['nodes'])<=1:
         model.multiNode = False
         model.nodes = Set(initialize=['singlNode'], doc='nodes in the system')
+        model.simplePX = None
     else:
         # if network inputs passed and multiple nodes present, create node set
         model.multiNode = True
         nodeList = [node['node_id'] for node in parameter['network']['nodes']]
         model.nodes = Set(initialize=nodeList, doc='nodes in the system')
-        
+        model.simplePX = None
+        try:
+            model.simplePX = parameter['network']['settings']['simplePowerExchange']
+        except:
+            model.simplePX = False
     
     # Parameter
     model.outside_temperature = Param(model.ts, initialize=pandas_to_dict(inputs['oat']), \
@@ -99,6 +103,8 @@ def base_model(inputs, parameter):
                                        doc='regulation dn price [$/kWh]')
     model.demand_periods_preset = Param(model.periods, initialize=parameter['site']['demand_periods_prev'], \
                                         doc='preset demand [kW]')
+    model.pv_max_s = Param(model.nodes, initialize=0, mutable=True, \
+                                doc='pv inv max apparent power [kVA]')
         
     # load grid availability. if not present in timeseries data, assume it's always available
     if 'grid_available' in inputs.columns: 
@@ -143,10 +149,10 @@ def base_model(inputs, parameter):
                                 doc='pv generation [kW]')
         
             
-        # set power injected/absorbed at node to 0
-        model.power_inj = Var(model.ts, model.nodes, bounds=(0,0), doc='power injected from node [kW]')
-        model.power_abs = Var(model.ts, model.nodes, bounds=(0,0), doc='power absorbed at node [kW]')
-        model.power_networkLosses = Var(model.ts, model.nodes, bounds=(0,0), doc='losses in network [kW]')
+        # set simple power exchange vars to zero
+        model.powerExchangeOut = Var(model.ts, model.nodes, bounds=(0,0), doc='simple power exchange injected from node [kW]')
+        model.powerExchangeIn = Var(model.ts, model.nodes, bounds=(0,0), doc='simple power exchange absorbed at node [kW]')
+        model.powerExchangeLosses = Var(model.ts, model.nodes, bounds=(0,0), doc='simple power exchange losses in network [kW]')
         
     else:
         # for multi-node models, construct node-ts dataframe containing data for pyomo param initialization
@@ -157,6 +163,11 @@ def base_model(inputs, parameter):
         # initilize list of new node-based inputs columns in ts df
         loadNodeList = []
         pvNodeList = []
+        
+        # initialize simple power exchange vars that go into balance eqn
+        model.powerExchangeOut = Var(model.ts, model.nodes, bounds=(0, None), doc='simple power exchange injected from node [kW]')
+        model.powerExchangeIn = Var(model.ts, model.nodes, bounds=(0, None), doc='simple power exchange absorbed at node [kW]')
+        model.powerExchangeLosses = Var(model.ts, model.nodes, bounds=(0,None), doc='simple power exchange losses in network [kW]')
         
         for nn, node in enumerate(parameter['network']['nodes']):
             
@@ -188,6 +199,9 @@ def base_model(inputs, parameter):
                 
             pvNodeList.append(pvColName)
             
+            # extract pv inverter max s if present
+            if 'pv_maxS' in node['ders'].keys():
+                model.pv_max_s[node["node_id"]] = node['ders']['pv_maxS']            
 
         # define load and pv params from constructed df columns
         
@@ -203,11 +217,7 @@ def base_model(inputs, parameter):
                                                 columns=model.nodes, convertTs=False), \
                                 doc='static load demand [kW] by node')
             
-        # define power injected/absorbed at node (positive)
-        model.power_inj = Var(model.ts, model.nodes, bounds=(0,None), doc='power injected from node [kW]')
-        model.power_abs = Var(model.ts, model.nodes, bounds=(0,None), doc='power absorbed at node [kW]')
-        model.power_networkLosses = Var(model.ts, model.nodes, bounds=(0,None), doc='losses in network [kW]')
-        # logging.warning('power injection set to 0 for testing')
+        
         
     
     # define param to external generation. 
@@ -232,9 +242,6 @@ def base_model(inputs, parameter):
     
     model.power_provided = Var(model.ts, model.nodes, bounds=(None, None), doc='power provided at node [kW]')
     model.power_consumed = Var(model.ts, model.nodes, bounds=(None, None), doc='power consumed ar node [kW]')
-    
-    # model.power_injected = Var(model.ts, model.nodes, bounds=(None, None), doc='power injected at node [kW]')
-    # model.power_absorbed = Var(model.ts, model.nodes, bounds=(None, None), doc='power absorbed ar node [kW]')
     
     model.grid_importXORexport = Var(model.ts, doc='grid import xor export binary [-]',  domain=Binary)
     
@@ -339,7 +346,7 @@ def base_model(inputs, parameter):
                                     + model.sum_battery_discharge_grid_power[ts, nodes]\
                                     + model.generation_pv[ts, nodes] \
                                     + model.sum_genset_power[ts, nodes] \
-                                    + model.power_abs[ts, nodes] \
+                                    + model.powerExchangeIn[ts, nodes] \
                                     + model.external_gen_power[ts, nodes]
     model.constraint_power_provision = Constraint(model.ts, model.nodes, rule=power_provision, \
                                                   doc='constraint power provision')
@@ -349,16 +356,17 @@ def base_model(inputs, parameter):
                                     + model.grid_export[ts, nodes] \
                                     + model.load_served[ts,nodes] \
                                     + model.building_load_dynamic[ts,nodes] \
-                                    + model.power_inj[ts, nodes] \
-                                    + model.power_networkLosses[ts, nodes]
+                                    + model.powerExchangeOut[ts, nodes]
     model.constraint_power_consumption = Constraint(model.ts, model.nodes, rule=power_consumption, \
                                                   doc='constraint power consumption')
         
-        
-    def energy_balance(model, ts, nodes):
-        return model.power_provided[ts, nodes] == model.power_consumed[ts, nodes]
-    model.constraint_energy_balance = Constraint(model.ts, model.nodes, rule=energy_balance, \
-                                                 doc='constraint energy balance')
+    # apply energy balance for single-node models
+    if (not model.multiNode or len(model.nodes.ordered_data()) == 1) or model.simplePX:
+        # logging.info('applying energy balance constraint for single-node model')
+        def energy_balance(model, ts, nodes):
+            return model.power_provided[ts, nodes] == model.power_consumed[ts, nodes]
+        model.constraint_energy_balance = Constraint(model.ts, model.nodes, rule=energy_balance, \
+                                                      doc='constraint energy balance')
         
     def net_load_served_summation(model, ts, nodes):
         return model.load_served[ts, nodes] == model.load_input[ts, nodes] - model.load_shed[ts, nodes]
@@ -551,12 +559,12 @@ def default_output_list(parameter):
         output_list +=  [
             {
                 'name': 'batCharge',
-                'data': 'sum_battery_charge_grid_power',
+                'data': 'sum_battery_charge_grid_power_site',
                 'df_label': 'Battery Charging Power [kW]'
             },
             {
                 'name': 'batDisharge',
-                'data': 'sum_battery_discharge_grid_power',
+                'data': 'sum_battery_discharge_grid_power_site',
                 'df_label': 'Battery Discharging Power [kW]'
             },
             {
@@ -687,13 +695,13 @@ def dev_output_list(parameter):
         },
         {
             'name': 'powerInj',
-            'data': 'power_inj',
+            'data': 'powerExchangeOut',
             'index': 'nodes',
             'df_label': 'powerInj_'
         },
         {
             'name': 'powerAbs',
-            'data': 'power_abs',
+            'data': 'powerExchangeIn',
             'index': 'nodes',
             'df_label': 'powerAbs_'
         },

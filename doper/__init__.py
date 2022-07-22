@@ -7,4 +7,4 @@ from .utility import *
 from .wrapper import *
 from .data.tariff import get_tariff
 
-__version__ = "0.2.1"
+__version__ = "2.0.0"

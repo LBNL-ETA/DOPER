@@ -21,9 +21,8 @@ def get_root(f=None):
         root = os.getcwd()
     return root
 root = get_root()
-sys.path.insert(0, os.path.join(root, '..'))
-from DOPER.utility import pandas_to_dict, pyomo_read_parameter, plot_streams, get_root, extract_properties    
 
+from ..utility import pandas_to_dict, pyomo_read_parameter, plot_streams, get_root, extract_properties    
 
 def add_loadControl(model, inputs, parameter):
         

@@ -19,3 +19,7 @@ dist/*
 ###########
 doper/solvers/Linux64/*
 doper/solvers/Windows64/*
+
+# test result files #
+#####################
+/examples/test_results/*

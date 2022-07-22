@@ -22,8 +22,8 @@ def get_root(f=None):
         root = os.getcwd()
     return root
 root = get_root()
-sys.path.insert(0, os.path.join(root, '..'))
-from DOPER.utility import pandas_to_dict, pyomo_read_parameter, plot_streams, get_root, extract_properties    
+
+from ..utility import pandas_to_dict, pyomo_read_parameter, plot_streams, get_root, extract_properties    
 
 
 def add_genset(model, inputs, parameter):
@@ -65,6 +65,14 @@ def add_genset(model, inputs, parameter):
                                 doc='min time to start [ht]]')
     model.genset_regulation = Param(model.gensets, initialize=extract_properties(parameter, 'gensets', 'regulation', gensetListInput), \
                                 doc='able to participate in reg [1/0]')
+    try:
+        # try to extract max S capacity
+        model.genset_max_s = Param(model.gensets, initialize=extract_properties(parameter, 'gensets', 'maxS', gensetListInput), \
+                                    doc='genset max apparent power [kVA]')
+    except:
+        # if missing, just use max P
+        model.genset_max_s = Param(model.gensets, initialize=extract_properties(parameter, 'gensets', 'capacity', gensetListInput), \
+                                    doc='genset max apparent power [kVA]')
     
     model.genset_fuels = Param(model.gensets, model.fuels, default=0, mutable=True, \
                                 doc='genset fuel type')

@@ -25,8 +25,7 @@ def get_root(f=None):
     return root
 root = get_root()
 
-sys.path.insert(0, os.path.join(root, '..'))
-from DOPER.utility import pandas_to_dict, pyomo_read_parameter, plot_streams, get_root, extract_properties
+from ..utility import pandas_to_dict, pyomo_read_parameter, plot_streams, get_root, extract_properties
 
 def add_battery(model, inputs, parameter):
     
@@ -121,6 +120,16 @@ def add_battery(model, inputs, parameter):
                                 doc='battery minimum SOC [-]')
     model.bat_soc_max = Param(model.batteries, initialize=extract_properties(parameter, 'batteries', 'soc_max', batteryListInput), \
                                 doc='battery maximum SOC [-]')
+        
+    try:
+        # try to extract max S capacity
+        model.bat_max_s = Param(model.batteries, initialize=extract_properties(parameter, 'batteries', 'maxS', batteryListInput), \
+                                doc='battery max apprent power [kVA]')
+    except:
+        # if missing, just use max P
+        model.bat_max_s = Param(model.batteries, initialize=extract_properties(parameter, 'batteries', 'power_charge', batteryListInput), \
+                                doc='battery max apprent power [kVA]')
+            
     
     # these parameters are only used for battery degradation, and so should be extracted only when adding degrad equations
     # model.bat_degrad_eol = Param(model.batteries, initialize=extract_properties(parameter, 'batteries', 'degradation_endoflife'), \
@@ -288,7 +297,7 @@ def add_battery(model, inputs, parameter):
                                                             doc='constraint battery discharging')   
         
     def battery_selfdischarge_losses(model, ts, battery):
-        if ts == model.ts[1]:
+        if ts == model.ts.at(1):
             return model.battery_selfdischarge_power[ts, battery] == 0
         else:
             return model.battery_selfdischarge_power[ts, battery] == model.battery_energy[ts-model.timestep[ts], battery] \
@@ -297,7 +306,7 @@ def add_battery(model, inputs, parameter):
                                                                 doc='constraint battery self-discharging')
     
     def battery_energy_balance(model, ts, battery):
-        if ts == model.ts[1]: 
+        if ts == model.ts.at(1):
             return model.battery_energy[ts, battery] == model.bat_soc_init[battery] \
                                                         * model.bat_capacity[battery]
         else: 

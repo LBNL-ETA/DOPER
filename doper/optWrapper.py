@@ -8,13 +8,13 @@ from fmlc import eFMU
 from pyomo.environ import Objective, minimize
 
 # import optimization modules
-from wrapper import DOPER
-from utility import get_solver, get_root, standard_report
-from basemodel import base_model, plot_standard1, plot_pv_only, plot_dynamic, default_output_list
-from battery import add_battery
-from genset import add_genset
-from loadControl import add_loadControl
-from example import (example_inputs, example_parameter_add_genset, 
+from .wrapper import DOPER
+from .utility import get_solver, get_root, standard_report
+from .basemodel import base_model, plot_standard1, plot_pv_only, plot_dynamic, default_output_list
+from .battery import add_battery
+from .genset import add_genset
+from .loadControl import add_loadControl
+from .example import (example_inputs, example_parameter_add_genset, 
                     example_inputs_offgrid, example_inputs_planned_outage, 
                     example_parameter_add_battery, example_parameter_add_loadcontrol, 
                     example_inputs_load_shed, example_inputs_fueloutage, example_inputs_variable_co2)

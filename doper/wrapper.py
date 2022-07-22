@@ -25,9 +25,8 @@ def get_root(f=None):
     return root
 root = get_root()
 
-#sys.path.insert(0, os.path.join(root, '..'))
 from .utility import pyomo_read_parameter
-from .basemodel import default_output_list, generate_summary_metrics
+from .models.basemodel import default_output_list, generate_summary_metrics
 
 logger = logging.getLogger(__name__)
     
@@ -54,8 +53,9 @@ class DOPER(object):
             if type(model) == type(lambda x:x):
                 self._model = model
             else:
-                logger.error('The model is a type {%s}, not a type {!s}'.format \
-                             (type(model), type(lambda x:x)))
+                # logger.error('The model is a type {%s}, not a type {!s}'.format \
+                #              (type(model), type(lambda x:x)))
+                 logger.error(f'The model is a type {type(model)}, not a type {type(lambda x:x)}')
         else:
             logger.error('No model funciton supplied. Please supply a pyomo.environ.ConcreteModel object.')
         self.model_loaded = False
@@ -144,6 +144,8 @@ class DOPER(object):
         for outputItem in output_list:
             dfColName = outputItem['df_label'] = outputItem['df_label']
             tsDataDict = getattr(model, outputItem['data']).extract_values()
+            
+            
             # if output is only indexed by timestamp, add to dataframe
             if 'index' not in outputItem.keys():
                 # create new df for output item
@@ -152,6 +154,12 @@ class DOPER(object):
                 # if df.shape[0]==0:
                 #     df = itemDf
                 # else:
+                    
+                # if itemDf len is 0, something went wrong, skip item 
+                if itemDf.shape[0] == 0:
+                    logging.wanring(f'Could not process output data for: {dfColName}')  
+                    continue
+                    
                 df = pd.merge(df, itemDf, left_index=True, right_index=True)
                 
             else:
@@ -183,6 +191,8 @@ class DOPER(object):
                     # add new indexed ts dict to main df
                     itemDf = pd.DataFrame.from_dict(dataDictIndexed, orient='index', columns=[dfColNameIndexed])
                     df = pd.merge(df, itemDf, left_index=True, right_index=True)
+                    
+            
                 
             
         # construct extracted data into pandas dataframe

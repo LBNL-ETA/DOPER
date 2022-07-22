@@ -2,7 +2,6 @@
 DOPER install test module.
 """
 
-
 import subprocess as sp
 
 def test_install():
