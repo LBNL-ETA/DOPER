@@ -151,7 +151,7 @@ my_output_list = [
 Then use this list when initializing a DOPER instance
 ```python
 # Define the path to the solver executable
-solver_path = get_solver('cbc', solver_dir=os.path.join(get_root(), 'solvers'))
+solver_path = get_solver('cbc')
 
 # Initialize DOPER
 smartDER = DOPER(model=control_model,
