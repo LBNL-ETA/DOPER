@@ -123,7 +123,8 @@ def add_loadControl(model, inputs, parameter):
                                               domain=Binary, doc='binary var indicating if load circuit is on [1/0]')    
     model.load_shed_circuit = Var(model.ts, model.load_circuits, bounds=(0, None), \
                                   doc='load shed amount due to load control use for each load circuit [kW]')
-    
+    model.der_shed_load = Var(model.ts, model.load_circuits, bounds=(0, None), \
+                              doc='load shed derivative due to load control use for each load circuit [-]')
     # vars defined in basemodel
     # model.load_shed = Var(model.ts, model.nodes, bounds=(0, None), doc='load shed amount due to load control use [kW]')
     # model.load_shed_cost_total = Var(bounds=(0, None), doc='total load shed cost over horizon [$]')
@@ -168,6 +169,15 @@ def add_loadControl(model, inputs, parameter):
     model.constraint_node_load_shed = Constraint(model.ts, model.nodes, \
                                                                     rule=node_load_shed, \
                                                                     doc='constraint nodel load shed power')
-        
+    # dampen curtail actuation (derivative) for falling edge                                            
+    def der_shed_load(model, ts, load_circuit):
+        if ts == model.ts.at(1): return model.der_shed_load[ts, load_circuit] == 0
+        else: return model.der_shed_load[ts, load_circuit] >= model.load_circuits_on[ts-model.timestep[ts], load_circuit] - model.load_circuits_on[ts, load_circuit]
+    model.constraint_der_shed_load = Constraint(model.ts, model.load_circuits, rule=der_shed_load,
+                                                doc='constraint load shed derivative by circuit')
+    # load shed actuation activation, sum of all shed events 
+    def total_der_shed_load(model):
+        return model.load_shed_der_total ==  sum(model.der_shed_load[ts, circuit] for circuit in model.load_circuits for ts in model.ts)
+    model.constraint_total_der_shed_load = Constraint(rule=total_der_shed_load, doc='constraint total shed events')                                                
 
     return model

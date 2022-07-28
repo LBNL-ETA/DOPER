@@ -230,6 +230,8 @@ def base_model(inputs, parameter):
     model.load_served = Var(model.ts, model.nodes, bounds=(0, None), doc='total load demand served [kW]')
     model.load_served_site = Var(model.ts, bounds=(0, None), doc='total load demand served for entire site [kW]')
     model.generation_pv_site = Var(model.ts, bounds=(0, None), doc='total pv generation profile for entire site [kW]')
+    model.actual_generation_pv = Var(model.ts, model.nodes, bounds=(0, None), doc='actual pv generation after curtailment (islanded only) [kW]')
+    model.generation_pv_curtailed = Var(model.ts, model.nodes, bounds=(0, None), doc='curtailed pv power [kW]')
     
     model.grid_import_site = Var(model.ts, bounds=(0, parameter['site']['import_max']), doc='site total grid import [kW]')
     model.grid_export_site = Var(model.ts, bounds=(0, parameter['site']['export_max']), doc='site total grid export [kW]')
@@ -304,11 +306,13 @@ def base_model(inputs, parameter):
         model.load_shed = Var(model.ts, model.nodes, bounds=(0, None), doc='load shed amount due to load control use [kW]')
         model.load_shed_cost_total = Var(bounds=(0, None), doc='total load shed cost over horizon [$]')
         model.load_shed_site = Var(model.ts, bounds=(0, None), doc='total load shed [kW]')
+        model.load_shed_der_total = Var(bounds=(0, None), doc='total load shed derivative over horizon [-]')
     else:
         # if load control is disabled, set load shed and shed costs to zero
         model.load_shed = Var(model.ts, model.nodes, bounds=(0, 0), doc='load shed amount due to load control use [kW] - disabled')
         model.load_shed_cost_total = Var(bounds=(0, 0), doc='total load shed cost over horizon [$] - disabled')
         model.load_shed_site = Var(model.ts, bounds=(0, 0), doc='total load shed [kW] - disabled')
+        model.load_shed_der_total = Var(bounds=(0, 0), doc='total load shed derivative over horizon [-]')
       
     if parameter['system']['hvac_control']:
         model.building_load_dynamic = Var(model.ts, model.nodes, bounds=(None, None), doc='dynamic building load demand [kW]')
@@ -344,7 +348,7 @@ def base_model(inputs, parameter):
     def power_provision(model, ts, nodes):
         return model.power_provided[ts, nodes] == model.grid_import[ts, nodes] \
                                     + model.sum_battery_discharge_grid_power[ts, nodes]\
-                                    + model.generation_pv[ts, nodes] \
+                                    + model.actual_generation_pv[ts, nodes] \
                                     + model.sum_genset_power[ts, nodes] \
                                     + model.powerExchangeIn[ts, nodes] \
                                     + model.external_gen_power[ts, nodes]
@@ -359,6 +363,20 @@ def base_model(inputs, parameter):
                                     + model.powerExchangeOut[ts, nodes]
     model.constraint_power_consumption = Constraint(model.ts, model.nodes, rule=power_consumption, \
                                                   doc='constraint power consumption')
+                                                  
+    # pv curtailment when islanded
+    def pv_actual_power(model, ts, nodes):
+        if model.grid_available[ts] == 1:
+            return model.actual_generation_pv[ts, nodes] == model.generation_pv[ts, nodes]
+        else:
+            return model.actual_generation_pv[ts, nodes] <= model.generation_pv[ts, nodes]
+    model.constraint_pv_actual_power = Constraint(model.ts, model.nodes, rule=pv_actual_power, \
+                                                  doc='pv actual power with eventual curtailment')
+                                                  
+    def pv_curtail_power(model, ts, nodes):
+        return model.generation_pv_curtailed[ts, nodes] == model.generation_pv[ts, nodes] - model.actual_generation_pv[ts, nodes]
+    model.constraint_pv_curtail_power = Constraint(model.ts, model.nodes, rule=pv_curtail_power, \
+                                                  doc='pv curtaied power') 
         
     # apply energy balance for single-node models
     if (not model.multiNode or len(model.nodes.ordered_data()) == 1) or model.simplePX:
@@ -390,7 +408,7 @@ def base_model(inputs, parameter):
                                                     rule=site_load_served_agg, doc='site-total load served')
     
     def site_pv_gen_agg(model, ts, nodes):
-        return model.generation_pv_site[ts] == sum(model.generation_pv[ts, node] for node in model.nodes)
+        return model.generation_pv_site[ts] == sum(model.actual_generation_pv[ts, node] for node in model.nodes)
     model.constraint_site_pv_gen_agg = Constraint(model.ts, model.nodes, 
                                                     rule=site_pv_gen_agg, doc='site-total pv gen')
     
