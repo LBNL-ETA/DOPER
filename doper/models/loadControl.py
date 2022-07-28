@@ -141,14 +141,14 @@ def add_loadControl(model, inputs, parameter):
         
     # load shed volume by circuit
     def circuit_shed_load(model, ts, load_circuit):
-        return model.load_shed_circuit[ts, load_circuit] ==  model.load_shed_potential[ts, load_circuit] * (1 - model.load_circuits_on[ts, load_circuit] )
+        return model.load_shed_circuit[ts, load_circuit] ==  model.load_shed_potential[ts, load_circuit] * (1 - model.load_circuits_on[ts, load_circuit])
     model.constraint_circuit_shed_load = Constraint(model.ts, model.load_circuits, \
                                                     rule=circuit_shed_load, \
                                                     doc='constraint load shed volume by circuit')
     
     # total load shed across all circuits
     def total_shed_load(model, ts):
-        return model.load_shed_site[ts] ==  sum(model.load_shed_potential[ts, circuit] * model.load_circuits_on[ts, circuit] \
+        return model.load_shed_site[ts] ==  sum(model.load_shed_potential[ts, circuit] * (1 - model.load_circuits_on[ts, circuit]) \
                                               for circuit in model.load_circuits)
     model.constraint_total_shed_load= Constraint(model.ts, \
                                                     rule=total_shed_load, \
