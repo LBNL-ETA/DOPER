@@ -206,6 +206,9 @@ def add_battery(model, inputs, parameter):
                                           bounds=(0, None), doc='battery cell side charge [kW]')
     model.battery_discharge_power = Var(model.ts, model.batteries, \
                                               bounds=(0, None), doc='battery cell side discharge [kW]')
+    
+    model.battery_chargeXORdischarge = Var(model.ts, model.batteries, domain=Binary, \
+                                            doc='battery charge or discharge binary [-]')
     model.battery_soc = Var(model.ts, model.batteries, bounds=(0, None), doc='battery soc [-]')
     model.battery_agg_soc = Var(model.ts, bounds=(0, None), doc='battery aggregated state-of-charge [-]')
     
@@ -326,23 +329,20 @@ def add_battery(model, inputs, parameter):
     
     
     # Battery Charing XOR Discharging
-    #if use_binary:
-    # model.battery_chargeXORdischarge = Var(model.ts, model.batteries, domain=Binary, \
-    #                                         doc='battery charge or discharge binary [-]')
-    # def battery_charge_XOR_discharge(model, ts, battery):
-    #     return model.battery_charge_power[ts, battery] <=  model.battery_chargeXORdischarge[ts, battery] \
-    #                                                         * model.bat_power_charge[battery] \
-    #                                                         * model.battery_available[ts, battery]
-    # model.constraint_battery_charge_XOR_discharge = Constraint(model.ts, model.batteries, \
-    #                                                             rule=battery_charge_XOR_discharge, \
-    #                                                             doc='constraint battery charging xor discharging')  
-    # def battery_discharge_XOR_charge(model, ts, battery):
-    #     return model.battery_discharge_power[ts, battery] <=  (1 - model.battery_chargeXORdischarge[ts, battery]) \
-    #                                                             * model.bat_power_discharge[battery] \
-    #                                                             * model.battery_available[ts, battery]
-    # model.constraint_battery_discharge_XOR_charge = Constraint(model.ts, model.batteries, \
-    #                                                             rule=battery_discharge_XOR_charge, \
-    #                                                             doc='constraint battery discharging xor charging')
+    def battery_charge_XOR_discharge(model, ts, battery):
+        return model.battery_charge_power[ts, battery] <=  model.battery_chargeXORdischarge[ts, battery] \
+                                                            * model.bat_power_charge[battery] \
+                                                            * model.battery_available[ts, battery]
+    model.constraint_battery_charge_XOR_discharge = Constraint(model.ts, model.batteries, \
+                                                                rule=battery_charge_XOR_discharge, \
+                                                                doc='constraint battery charging xor discharging')  
+    def battery_discharge_XOR_charge(model, ts, battery):
+        return model.battery_discharge_power[ts, battery] <=  (1 - model.battery_chargeXORdischarge[ts, battery]) \
+                                                                * model.bat_power_discharge[battery] \
+                                                                * model.battery_available[ts, battery]
+    model.constraint_battery_discharge_XOR_charge = Constraint(model.ts, model.batteries, \
+                                                                rule=battery_discharge_XOR_charge, \
+                                                                doc='constraint battery discharging xor charging')
     
     # # Battery Regulation XOR Building support
     # model.battery_regulationXORbuilding = Var(model.ts, model.batteries, domain=Binary, initialize=0, \
