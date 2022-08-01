@@ -298,7 +298,7 @@ def mapExternalGen(parameter, data, model):
     
     # check if external_gen flag is present in param
     if 'external_gen' not in parameter['system'].keys():
-        logging.warning('external generation flag not found. default to 0.')
+        logging.info('external generation flag not found. default to 0.')
         return 0
     
     # check if external_gen flag is enabled
