@@ -7,6 +7,11 @@
     Version info (v1.0):
         -) Initial disaggregation of old code.
 '''
+
+# Fix bug in pyomo when intializing solver (timeout after 5s)
+from .utility import fix_bug_pyomo
+fix_bug_pyomo()
+
 import os
 import sys
 from time import time
@@ -208,7 +213,7 @@ class DOPER(object):
         
         return df
             
-    def do_optimization(self, data, parameter=None, tee=False, options={}, print_error=True):
+    def do_optimization(self, data, parameter=None, tee=False, keepfiles=False, report_timing=False, options={}, print_error=True):
         '''
             Integrated function to conduct the optimization for control purposes.
 
@@ -217,7 +222,10 @@ class DOPER(object):
                 data (pandas.DataFrame): The input dataframe for the optimization.
                 parameter (dict): Configuration dictionary for the optimization. (default=None)
                 tee (bool): Prints the solver output. (default=False)
+                keepfiles (bool): Keeps the solver input and output files. (default=False)
+                report_timing (bool): Print pyomo timings. (default=False)
                 options (dict): Options to be set for solver. (default={})
+                print_error (bool): Log error messages. (default=True)
 
             Returns
             -------
@@ -238,7 +246,8 @@ class DOPER(object):
             t_start = time()
             for k in options.keys():
                 solver.options[k] = options[k]
-            result = solver.solve(self.model, load_solutions=False, tee=tee)
+            result = solver.solve(self.model, load_solutions=False, tee=tee,
+                                  keepfiles=keepfiles, report_timing=report_timing)
             termination = result.solver.termination_condition
             if termination == TerminationCondition.optimal and 'cbc' in str(result.solver).lower() and not 'objective' in result.solver.message:
                 termination = 'infeasible' # CBC does not report infeasible

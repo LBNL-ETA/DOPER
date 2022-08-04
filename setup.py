@@ -22,7 +22,7 @@ with open('requirements.txt', 'r', encoding='utf8') as f:
 
 # version
 with open('doper/__init__.py', 'r', encoding='utf8') as f:
-    version = json.loads(f.read().split('__version__ = ')[1])
+    version = json.loads(f.read().split('__version__ = ')[1].split('\n')[0])
 
 # setup solvers
 if INSTALL_SOLVERS:
@@ -30,7 +30,7 @@ if INSTALL_SOLVERS:
     if not 'win' in sys.platform:
         sp.call('sh setup_solvers.sh', shell=True, cwd=os.path.join(root, 'doper', 'solvers'))
     else:
-        print('WARNING: Solvers cannot be automatically installed on Windows. ' +\
+        print('WARNING: Solvers cannot be automatically installed on Windows. ' + \
             'Please download manually from https://ampl.com/dl/open and place in doper/solvers/Windows64.')
 
 setuptools.setup(

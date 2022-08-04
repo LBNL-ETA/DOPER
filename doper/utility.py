@@ -15,6 +15,27 @@ import pandas as pd
 import numpy as np
 import logging
 
+def fix_bug_pyomo():
+    # Fix bug in pyomo when intializing solver (timeout after 5s)
+    from importlib import reload
+    import pyomo
+    path_pyomo = os.path.dirname(pyomo.__file__)
+    path_pyomo_asl = os.path.join(path_pyomo, 'solvers', 'plugins', 'solvers', 'ASL.py')
+    if os.path.exists(path_pyomo_asl):
+        with open(path_pyomo_asl, 'r') as f:
+            pyomo_asl = f.read()
+        if '[solver_exec, "-v"]' in pyomo_asl:
+            pyomo_asl = pyomo_asl.replace('[solver_exec, "-v"]', '[solver_exec, "-v", "exit"]')
+            with open(path_pyomo_asl, 'w') as f:
+                f.write(pyomo_asl)
+        elif '[solver_exec, "-v", "exit"]' in pyomo_asl:
+            pass
+        else:
+            raise ValueError(f'The snippet [solver_exec, "-v"] does not exist in Pyomo ASL.py at {path_pyomo_asl}.')
+    else:
+        raise ValueError(f'The Pyomo ASL.py file does not exist at {path_pyomo_asl}.')
+    reload(pyomo)
+
 def get_root(f=None):
     try:
         if not f:
