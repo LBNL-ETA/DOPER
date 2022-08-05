@@ -131,8 +131,8 @@ def get_solver(solver, solver_dir=os.path.join(get_root(), 'solvers')):
     '''
     system = platform.system()
     bit = '64' if sys.maxsize > 2**32 else '32'
-    if system == 'Windows': return os.path.join(solver_dir, system+bit, solver+'.exe')
-    else: return os.path.join(solver_dir, system+bit, solver)
+    if system == 'Windows': return os.path.join(solver_dir, 'Windows'+bit, solver+'.exe')
+    else: return os.path.join(solver_dir, 'Linux'+bit, solver)
    
     
 def extract_properties(parameter, tech_name, prop_name, set_list=None):
