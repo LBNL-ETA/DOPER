@@ -30,8 +30,8 @@ if INSTALL_SOLVERS:
     if not 'win' in sys.platform:
         sp.call('sh setup_solvers.sh', shell=True, cwd=os.path.join(root, 'doper', 'solvers'))
     else:
-        print('WARNING: Solvers cannot be automatically installed on Windows. ' + \
-            'Please download manually from https://ampl.com/dl/open and place in doper/solvers/Windows64.')
+        sp.call('setup_solvers.bat', shell=True, cwd=os.path.join(root, 'doper', 'solvers'))
+    print('done.')
 
 setuptools.setup(
     name="DOPER",

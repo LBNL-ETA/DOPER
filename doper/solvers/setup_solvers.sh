@@ -17,11 +17,11 @@ do
 done
 cd ..
 
-mkdir Windows64
-cd Windows64
-for s in $solvers
-do
-    wget https://ampl.com/dl/open/$s/$s-win64.zip
-    unzip -u $s-win64.zip
-    rm $s-win64.zip
-done
+#mkdir Windows64
+#cd Windows64
+#for s in $solvers
+#do
+#    wget https://ampl.com/dl/open/$s/$s-win64.zip
+#    unzip -u $s-win64.zip
+#    rm $s-win64.zip
+#done
