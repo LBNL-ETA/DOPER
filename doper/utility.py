@@ -210,7 +210,7 @@ def standard_report(res, only_solver=False):
     duration, objective, df, model, result, termination, parameter = res
     output = ''
     try:
-        output += 'Solver\t\t\t{!s}\n'.format(result['Solver'][0]['Message'].split(' ')[0])
+        output += 'Solver\t\t\t{!s}\n'.format(' '.join(result['Solver'][0]['Message'].split(' ')[0][:2]))
     except:
         pass
     output += 'Duration [s]\t\t{!s}\n'.format(round(duration, 2))
