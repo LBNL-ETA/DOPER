@@ -13,7 +13,7 @@ import logging
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from pyomo.environ import ConcreteModel, Set, Param, Var, Constraint, Binary
+from pyomo.environ import ConcreteModel, Set, Param, Var, Constraint, Binary, Any
 
 def get_root(f=None):
     try:
@@ -113,7 +113,7 @@ def add_battery(model, inputs, parameter):
     model.bat_self_discharge = Param(model.batteries, initialize=extract_properties(parameter, 'batteries', 'self_discharging', batteryListInput), \
                                 doc='battery self discharge rate [-/hr]')
     model.bat_soc_end = Param(model.batteries, initialize=extract_properties(parameter, 'batteries', 'soc_final', batteryListInput), \
-                                doc='battery end SOC [-]')
+                                doc='battery end SOC [-]', within=Any)
     model.bat_soc_init = Param(model.batteries, initialize=extract_properties(parameter, 'batteries', 'soc_initial', batteryListInput), \
                                 doc='battery initial SOC [-]')
     model.bat_soc_min = Param(model.batteries, initialize=extract_properties(parameter, 'batteries', 'soc_min', batteryListInput), \
