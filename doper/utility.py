@@ -67,10 +67,10 @@ def pandas_to_dict(df, columns=None, convertTs=False):
         df = df.copy(deep=True)
         if columns: df.columns = columns
         for c in df.columns:
-            for k,v in df[c].iteritems():
+            for k,v in df[c].items():
                 d[k,c] = int(v) if v % 1 == 0 else float(v)
     elif isinstance(df, pd.Series):
-        for k,v in df.iteritems():
+        for k,v in df.items():
             d[k] = int(v) if v % 1 == 0 else float(v)
     else:
         print('The data must be a pd.DataFrame (for multiindex) or pd.Series (single index).')
