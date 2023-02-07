@@ -193,7 +193,7 @@ def resample_variable_ts(data, reduced_start=60, reduced_ts=30, cols_fill=[]):
     for c in data2.columns:
         if c in cols_fill:
             data2[c] = data.loc[reduced_start_ix-pd.DateOffset(minutes=reduced_ts):, c].shift( \
-                shift).resample('{}T'.format(reduced_ts), offset='{}T'.format(reduced_start)).ffill().shift(-1)
+                shift).resample('{}T'.format(reduced_ts), offset='{}T'.format(reduced_start)).ffill()
         else:
             data2[c] = data.loc[reduced_start_ix-pd.DateOffset(minutes=reduced_ts):, c].shift( \
                 shift).resample('{}T'.format(reduced_ts), offset='{}T'.format(reduced_start)).mean()
