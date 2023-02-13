@@ -1,7 +1,7 @@
 if [%1]==[] (set solver_dir="../solvers/") else (set solver_dir=%1)
 
-cbc_repo="https://github.com/coin-or/Cbc/releases/download/releases%2F"
-cbc_version="2.10.8"
+set cbc_repo="https://github.com/coin-or/Cbc/releases/download/releases%2F"
+set cbc_version="2.10.8"
 
 set solvers=(cbc)
 cd $solver_dir

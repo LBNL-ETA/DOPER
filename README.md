@@ -22,6 +22,8 @@ The following link permits users to clone the source directory containing the [D
 
 The package can be installed with the `pip install .` command.
 
+Note that on Linux-based systems the [CBC](https://github.com/coin-or/Cbc) solver will be installed automatically. On Windows or other OS please install the desired solver manually. For example, to install CBC on Windows download the binaries for the latest release [here](https://github.com/coin-or/Cbc/releases), and point the `solver_path` argument to the `bin/cbc.exe` location on your system.
+
 ## Use
 
 Standard usage of the DOPER library follows the sequence of steps outlined in the example here:
