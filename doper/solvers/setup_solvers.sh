@@ -4,24 +4,20 @@ else
     solver_dir="../solvers/"
 fi
 
-solvers="cbc ipopt couenne"
+cbc_repo="https://github.com/coin-or/Cbc/releases/download/releases%2F"
+cbc_version="2.10.8"
+
+solvers="cbc"
 cd $solver_dir
 
 mkdir Linux64
 cd Linux64
 for s in $solvers
 do
-    wget https://ampl.com/dl/open/$s/$s-linux64.zip
-    unzip -u $s-linux64.zip
-    rm $s-linux64.zip
+    fname=Cbc-releases.${cbc_version}-x86_64-ubuntu18-gcc750-static.tar.gz
+	wget ${cbc_repo}${cbc_version}/${fname}
+    tar -xvzf ${fname}
+    rm ${fname}
+	mv bin/* .
 done
 cd ..
-
-#mkdir Windows64
-#cd Windows64
-#for s in $solvers
-#do
-#    wget https://ampl.com/dl/open/$s/$s-win64.zip
-#    unzip -u $s-win64.zip
-#    rm $s-win64.zip
-#done

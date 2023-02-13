@@ -36,7 +36,7 @@ from .models.basemodel import default_output_list, generate_summary_metrics
 logger = logging.getLogger(__name__)
     
 class DOPER(object):
-    def __init__(self, model=None, parameter=None, solver_name='', solver_path='ipopt', output_list=None,
+    def __init__(self, model=None, parameter=None, solver_name=None, solver_path='ipopt', output_list=None,
                  singnal_handle=False, debug=False, pyomo_logger=logging.WARNING):
         '''
             Initialization function of the DOPER package.
@@ -45,7 +45,7 @@ class DOPER(object):
             -----
                 model (function): The optimization model as a pyomo.environ.ConcreteModel function.
                 parameter (dict): Configuration dictionary for the optimization. (default=None)
-                solver_name (str): Name of the solver. (default='')
+                solver_name (str): Name of the solver. (default=None)
                 solver_path (str): Full path to the solver. (default='ipopt')
                 pyomo_to_pandas (function): The function to convert the model output to a 
                     pandas.DataFrame. (default=None)
@@ -65,8 +65,10 @@ class DOPER(object):
             logger.error('No model funciton supplied. Please supply a pyomo.environ.ConcreteModel object.')
         self.model_loaded = False
         self.parameter = copy.deepcopy(parameter)
-        self.solver_name = solver_name
         self.solver_path = solver_path
+        if solver_name == None:
+            solver_name = os.path.split(solver_path)[-1]
+        self.solver_name = solver_name
         # if pyomo_to_pandas:
         #     if type(pyomo_to_pandas) == type(lambda x:x):
         #         self.pyomo_to_pandas = pyomo_to_pandas
