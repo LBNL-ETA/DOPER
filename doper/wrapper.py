@@ -215,7 +215,8 @@ class DOPER(object):
         
         return df
             
-    def do_optimization(self, data, parameter=None, tee=False, keepfiles=False, report_timing=False, options={}, print_error=True):
+    def do_optimization(self, data, parameter=None, tee=False, keepfiles=False, report_timing=False, options={},
+                        print_error=True, other_valid_terminations=[TerminationCondition.maxTimeLimit]):
         '''
             Integrated function to conduct the optimization for control purposes.
 
@@ -228,6 +229,7 @@ class DOPER(object):
                 report_timing (bool): Print pyomo timings. (default=False)
                 options (dict): Options to be set for solver. (default={})
                 print_error (bool): Log error messages. (default=True)
+                other_valid_terminations (list): Valid Pyomo termination status to load solutions.
 
             Returns
             -------
@@ -252,7 +254,7 @@ class DOPER(object):
                                   keepfiles=keepfiles, report_timing=report_timing)
             termination = result.solver.termination_condition
             if termination == TerminationCondition.optimal and 'cbc' in str(result.solver).lower() and not 'objective' in result.solver.message:
-                termination = 'infeasible' # CBC does not report infeasible
+                termination = TerminationCondition.infeasible # CBC does not report infeasible
             if termination != TerminationCondition.optimal and print_error:
                 logger.warning('Solver did not report optimality:\n{!s}'.format(result.solver))
             try:
@@ -260,7 +262,7 @@ class DOPER(object):
             except Exception as e:
                 if print_error:
                     logger.warning('Could not load solutions:\n{!s}'.format(e))
-            if termination == TerminationCondition.optimal:
+            if termination in ([TerminationCondition.optimal] + other_valid_terminations):
                 objective = self.model.objective()
                 df = self.write_ts_results()
                 self.summary = generate_summary_metrics(self.model)
