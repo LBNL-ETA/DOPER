@@ -28,6 +28,7 @@ root = get_root()
 from ..utility import pandas_to_dict, add_second_index, pyomo_read_parameter, plot_streams, get_root, constructNodeInput, mapExternalGen
 
 
+
 def base_model(inputs, parameter):
     '''
         This function sets up the optimization model used for control.
@@ -150,9 +151,9 @@ def base_model(inputs, parameter):
         
             
         # set simple power exchange vars to zero
-        model.powerExchangeOut = Var(model.ts, model.nodes, bounds=(0,0), doc='simple power exchange injected from node [kW]')
-        model.powerExchangeIn = Var(model.ts, model.nodes, bounds=(0,0), doc='simple power exchange absorbed at node [kW]')
-        model.powerExchangeLosses = Var(model.ts, model.nodes, bounds=(0,0), doc='simple power exchange losses in network [kW]')
+        model.powerExchangeOut = Var(model.ts, model.nodes, bounds=(0,0), doc='simple power exchange injected from node [kW] - disabled')
+        model.powerExchangeIn = Var(model.ts, model.nodes, bounds=(0,0), doc='simple power exchange absorbed at node [kW] - disabled')
+        model.powerExchangeLosses = Var(model.ts, model.nodes, bounds=(0,0), doc='simple power exchange losses in network [kW] - disabled')
         
     else:
         # for multi-node models, construct node-ts dataframe containing data for pyomo param initialization
@@ -165,9 +166,16 @@ def base_model(inputs, parameter):
         pvNodeList = []
         
         # initialize simple power exchange vars that go into balance eqn
-        model.powerExchangeOut = Var(model.ts, model.nodes, bounds=(0, None), doc='simple power exchange injected from node [kW]')
-        model.powerExchangeIn = Var(model.ts, model.nodes, bounds=(0, None), doc='simple power exchange absorbed at node [kW]')
-        model.powerExchangeLosses = Var(model.ts, model.nodes, bounds=(0,None), doc='simple power exchange losses in network [kW]')
+        if model.simplePX:
+            # enable simple power exchange vars for simple model
+            model.powerExchangeOut = Var(model.ts, model.nodes, bounds=(0, None), doc='simple power exchange injected from node [kW]')
+            model.powerExchangeIn = Var(model.ts, model.nodes, bounds=(0, None), doc='simple power exchange absorbed at node [kW]')
+            model.powerExchangeLosses = Var(model.ts, model.nodes, bounds=(0,None), doc='simple power exchange losses in network [kW]')
+        else:
+            # disable simple power exchange vars for full power-flow
+            model.powerExchangeOut = Var(model.ts, model.nodes, bounds=(0, 0), doc='simple power exchange injected from node [kW] - disabled')
+            model.powerExchangeIn = Var(model.ts, model.nodes, bounds=(0, 0), doc='simple power exchange absorbed at node [kW] - disabled')
+            model.powerExchangeLosses = Var(model.ts, model.nodes, bounds=(0,0), doc='simple power exchange losses in network [kW] - disabled')
         
         for nn, node in enumerate(parameter['network']['nodes']):
             
@@ -248,14 +256,14 @@ def base_model(inputs, parameter):
     model.grid_importXORexport = Var(model.ts, doc='grid import xor export binary [-]',  domain=Binary)
     
     # total and timeseries co2 variables
-    model.co2_elec_import = Var(bounds=(None, None), doc='total CO2 from elec purchases [kg]')
-    model.co2_elec_export = Var(bounds=(None, None), doc='total CO2 offsts from elec exports [kg]')
-    model.co2_fuels = Var(bounds=(None, None), doc='total CO2 from fuel consumption [kg]')
-    model.co2_total = Var(bounds=(None, None), doc='total CO2 emissions [kg]')
+    model.co2_elec_import = Var(bounds=(0, None), doc='total CO2 from elec purchases [kg]')
+    model.co2_elec_export = Var(bounds=(0, None), doc='total CO2 offsts from elec exports [kg]')
+    model.co2_fuels = Var(bounds=(0, None), doc='total CO2 from fuel consumption [kg]')
+    model.co2_total = Var(bounds=(0, None), doc='total CO2 emissions [kg]')
     
-    model.co2_profile_elec_import = Var(model.ts, bounds=(None, None), doc='timeseries profile of CO2 from elec purchases [kg]')
-    model.co2_profile_elec_export = Var(model.ts, bounds=(None, None), doc='timeseries profile of CO2 offsts from elec exports [kg]')
-    model.co2_profile_fuels = Var(model.ts, bounds=(None, None), doc='timeseries profile of CO2 from fuel consumption [kg]')
+    model.co2_profile_elec_import = Var(model.ts, bounds=(0, None), doc='timeseries profile of CO2 from elec purchases [kg]')
+    model.co2_profile_elec_export = Var(model.ts, bounds=(0, None), doc='timeseries profile of CO2 offsts from elec exports [kg]')
+    model.co2_profile_fuels = Var(model.ts, bounds=(0, None), doc='timeseries profile of CO2 from fuel consumption [kg]')
     model.co2_profile_total = Var(model.ts, bounds=(None, None), doc='timeseries profile of CO2 emissions [kg]')
     
     # cost and objective vars
@@ -440,11 +448,11 @@ def base_model(inputs, parameter):
 
     # CO2 Emissions
     def grid_import_emissions(model):
-        return model.co2_elec_import == sum((model.grid_import_site[t]*model.grid_co2_intensity[t]) for t in accounting_ts)
+        return model.co2_elec_import == sum((model.grid_import_site[t]*model.grid_co2_intensity[t] / model.timestep_scale[t]) for t in accounting_ts)
     model.constraint_grid_import_emissions = Constraint(rule=grid_import_emissions, doc='grid import co2 calculation')
     
     def grid_export_emissions(model):
-        return model.co2_elec_export == sum((model.grid_export_site[t]*model.grid_co2_intensity[t]) for t in accounting_ts)
+        return model.co2_elec_export == sum((model.grid_export_site[t]*model.grid_co2_intensity[t] / model.timestep_scale[t]) for t in accounting_ts)
     model.constraint_grid_export_emissions = Constraint(rule=grid_export_emissions, doc='grid export co2 calculation')
     
     def grid_import_emissions_profile(model, ts):
@@ -742,6 +750,24 @@ def dev_output_list(parameter):
             'df_label': 'batDischarge_'
         }
     ]
+    
+    if 'network' in parameter.keys():
+        if not parameter['network']['settings']['simplePowerExchange']:
+            # add node voltages if power-flow model is enabled
+            output_list += [
+                {
+                    'name': 'voltage_real',
+                    'data': 'voltage_real',
+                    'index': 'nodes',
+                    'df_label': 'voltageReal_'
+                },
+                {
+                    'name': 'voltage_imag',
+                    'data': 'voltage_imag',
+                    'index': 'nodes',
+                    'df_label': 'voltageImag_'
+                },
+            ]
     
     return output_list
 

@@ -31,22 +31,70 @@ root = get_root()
 from ..utility import pandas_to_dict, pyomo_read_parameter, plot_streams, get_root, extract_properties
 
 
-
 def add_network(model, inputs, parameter):
+    '''
+    this function adds network equations to an existing DOPER pyomo model
+    depending on the value of model.simplePX, the function either adds equations
+    for simple power exchange or full powerflow model
+
+    Parameters
+    ----------
+    model : pyomo model
+        existing DOPER base model.
+    inputs : pandas data frame
+        dataframe containing time-series inputs.
+    parameter : dict
+        dict containing model input paramters.
+
+    Returns
+    -------
+    model : pyomo model
+        DOPER pyomo model with added network equations.
+
+    '''
     
-    logging.warning('power flow model is currently under development. Models may not solve and/or produce accurate solutions')
+    # wrapper func automatically adds correct network constriants
+    # depending on if simple powerflow option is selected
+    if model.simplePX:
+        
+        logging.info('adding simple power exchange equations')
+        model = add_network_simple(model, inputs, parameter)
+        
+    else:
+        
+        logging.info('adding power-flow equations')
+        model = add_network_powerflow(model, inputs, parameter)
+
+    return model
+    
+
+def add_network_powerflow(model, inputs, parameter):
+    '''
+    this function adds full powerflow model to existing pyomo model
+
+    Parameters
+    ----------
+    model : pyomo model
+        existing DOPER base model.
+    inputs : pandas data frame
+        dataframe containing time-series inputs.
+    parameter : dict
+        dict containing model input paramters.
+
+    Returns
+    -------
+    model : pyomo model
+        DOPER pyomo model with added powerflow equations.
+
+    '''
         
     # create alias of node set
     # Note: pyomo doesn't seem to have ability to explicitly alias sets, so just copying nodes set
     nodesAliasList = model.nodes.ordered_data()
     model.nodesN = Set(initialize=nodesAliasList, doc='alias setnodes in the system')
     model.nNodes = len(model.nodes.ordered_data())
-    
-    # set simple power exchange vars to zero
-    model.powerExchangeOut = Var(model.ts, model.nodes, bounds=(0,0), doc='simple power exchange injected from node [kW]')
-    model.powerExchangeIn = Var(model.ts, model.nodes, bounds=(0,0), doc='simple power exchange absorbed at node [kW]')
-    model.powerExchangeLosses = Var(model.ts, model.nodes, bounds=(0,0), doc='simple power exchange losses in network [kW]')
-    
+
+    # init index of slack node in node list. defined below
     model.slackNodeIndex = None
     
     # PARAMETERS
@@ -66,7 +114,6 @@ def add_network(model, inputs, parameter):
     model.branch_img_imp = Param(model.nodes, model.nodesN, default=0, mutable=True, \
                                  doc='imaginary imp in branch')
         
-        
     model.line_len = Param(model.nodes, model.nodesN, default=0, mutable=True, \
                                  doc='cable length for node-connections')
     model.line_isTx = Param(model.nodes, model.nodesN, default=0, mutable=True, \
@@ -79,34 +126,48 @@ def add_network(model, inputs, parameter):
                                  doc='cable resistance for node-connections')
     model.line_ind = Param(model.nodes, model.nodesN, default=0, mutable=True, \
                                  doc='cable inductance for node-connections')
+    
+    pfSettings = parameter['network']['settings']
+    
+    model.enableLosses = pfSettings['enableLosses']
+    model.enableGenPqLimits = pfSettings['enableGenPqLimits']
+    model.useConsVoltMin = pfSettings['useConsVoltMin']
+    
+    # extract power flow settings from parameter
+    model.sBase = pfSettings['sBase']
+    model.slackBusVoltage = pfSettings['slackBusVoltage']
+    model.powerFactors = pfSettings['powerFactors']
+    
+    model.cableDerating = pfSettings['cableDerating']
+    model.txDerating = pfSettings['txDerating']
+    
+    model.thetaMin = pfSettings['thetaMin']
+    model.thetaMax = pfSettings['thetaMax']
+    model.voltMin = pfSettings['voltMin']
+    model.voltMax = pfSettings['voltMax']
+    
+    # get curSqModel number if provided. default is 1
+    model.curSqModel = pfSettings.get('curSqModel', 1)
+    
+    if model.curSqModel != 1:
+        model.curSqModel = 1 # NOTE: method 3 not currently working. Only method 1 should be used for present
+        logging.error('Only Method 3 Current-Square Linearization Currently Available')
         
-    # define power factor by asset
-    logging.warning('power factor current hardcoded in model')
+    # get enableConstantPf number if provided. default is 1
+    model.enableConstantPf = pfSettings.get('enableConstantPf', 1)
+        
+    # logging.info(f'constant power factor: {model.enableConstantPf}')
+        
+    # get enableConstantPf number if provided. default is 1
+    model.enableVoltageAngleConstraint = pfSettings.get('enableVoltageAngleConstraint', 1)
     
-    powerFactors = {
-        'pv': 1,  
-        'genset': 1,
-        'batteryDisc': 1,
-        'batteryChar': 1,
-        'load': 1
-    }
+    # logging.info(f'constrain voltage angle: {model.enableVoltageAngleConstraint}')
     
-    cableDerating = 1
-    txDerating = 1
-
     # define number of segments for current-square linear approx
-    model.nEdges = 8
-    
-    
-    model.slackBusVoltage = 1
-    model.enableLosses = True
-    genPqLimits = False
-    
-    model.consVoltMin = False
-    model.thetaMin = -0.18
-    model.thetaMax = 0.09
-    model.voltMin = 0.8
-    model.voltMax = 1.1
+    if model.curSqModel == 1:
+        model.nEdges = 3 # method 1
+    if model.curSqModel == 3:
+        model.nEdges = 8 # method 3
     
     # loop through nodes to define connections
     for node in parameter['network']['nodes']:
@@ -172,7 +233,7 @@ def add_network(model, inputs, parameter):
 
                 
                 model.node_connection[node1Name, node2Name] = 1
-                model.line_capacity[node1Name, node2Name] = ((1-isTx) * cableDerating + isTx * txDerating) * lineAmpacity
+                model.line_capacity[node1Name, node2Name] = ((1-isTx) * model.cableDerating + isTx * model.txDerating) * lineAmpacity
                 
                 model.branch_real_imp[node1Name, node2Name] = ((1-isTx) * lineLen * lineRes) + (isTx * lineRes)
                 model.branch_img_imp[node1Name, node2Name] = ((1-isTx) * lineLen * lineInd) + (isTx * lineInd)
@@ -199,14 +260,23 @@ def add_network(model, inputs, parameter):
     model.nodeListNoSlack = nodeListNoSlack
     
     model.nodesNoSlack = Set(initialize=nodeListNoSlack, doc='nodes in the system, omitting slack bus')
+    
+    # define sets for linearization of current-square (method 1)
+    if model.curSqModel == 1:
+        curEdgeList = [f'seg{ii+1}' for ii in range(model.nEdges)]
+        curEdgeNos = { f'seg{ii+1}':(ii+1) for ii in range(model.nEdges)} 
+        model.curEdges = Set(initialize=curEdgeList, ordered=True, doc='current-square edges')
+        model.curEdgeNos = Param(model.curEdges, initialize=curEdgeNos, \
+                                          doc='current-square edge number')
                 
-    # define sets for linearization of current-square
-    curEdgeList = [f'edge{ii+1}' for ii in range(model.nEdges)]
-    curEdgeNos = { f'edge{ii+1}':(ii+1) for ii in range(model.nEdges)} 
-    model.edgeAngle = 2*3.1415 / model.nEdges 
-    model.curEdges = Set(initialize=curEdgeList, ordered=True, doc='current-square edges')
-    model.curEdgeNos = Param(model.curEdges, initialize=curEdgeNos, \
-                                      doc='current-square edge number')
+    # # define sets for linearization of current-square (method 3)
+    if model.curSqModel == 3:
+        curEdgeList = [f'edge{ii+1}' for ii in range(model.nEdges)]
+        curEdgeNos = { f'edge{ii+1}':(ii+1) for ii in range(model.nEdges)} 
+        model.edgeAngle = 2*3.1415 / model.nEdges 
+        model.curEdges = Set(initialize=curEdgeList, ordered=True, doc='current-square edges')
+        model.curEdgeNos = Param(model.curEdges, initialize=curEdgeNos, \
+                                          doc='current-square edge number')
     
     # confirm newtork line properties are symmetric
     logging.info('checking network connections symmetry')
@@ -265,21 +335,19 @@ def add_network(model, inputs, parameter):
     model.voltage_real = Var(model.ts, model.nodes, bounds=(0, None), doc='real voltage at node')
     model.voltage_imag = Var(model.ts, model.nodes, bounds=(None, None), doc='imag voltage at node')
     
-    model.real_branch_cur_power_square = Var(model.ts, model.nodes, model.nodesN, bounds=(0, None), doc='real branch current or power squared')
-    model.imag_branch_cur_power_square = Var(model.ts, model.nodes, model.nodesN, bounds=(0, None), doc='imag branch current or power squared')
+    model.real_branch_cur_square = Var(model.ts, model.nodes, model.nodesN, bounds=(0, None), doc='real branch current squared')
+    model.imag_branch_cur_square = Var(model.ts, model.nodes, model.nodesN, bounds=(0, None), doc='imag branch current squared')
     model.real_branch_loss = Var(model.ts, model.nodes, model.nodesN, bounds=(0, None), doc='real power losses in branch')
     model.imag_branch_loss = Var(model.ts, model.nodes, model.nodesN, bounds=(0, None), doc='imag power losses in branch')
     
     model.real_branch_cur = Var(model.ts, model.nodes, model.nodesN, bounds=(None, None), doc='real branch current')
     model.imag_branch_cur = Var(model.ts, model.nodes, model.nodesN, bounds=(None, None), doc='imag branch current')
-    
-    model.real_branch_power = Var(model.ts, model.nodes, model.nodesN, bounds=(None, None), doc='real branch power')
-    model.imag_branch_power = Var(model.ts, model.nodes, model.nodesN, bounds=(None, None), doc='imag branch power')
-    
-    model.real_branch_cur_power = Var(model.ts, model.nodes, model.nodesN, bounds=(None, None), doc='real branch current or power, method dependent')
-    model.imag_branch_cur_power = Var(model.ts, model.nodes, model.nodesN, bounds=(None, None), doc='imag branch current or power, method dependent')
 
+    model.real_branch_cur_pos = Var(model.ts, model.nodes, model.nodesN, bounds=(0, None), doc='abs of real branch current')
+    model.imag_branch_cur_pos = Var(model.ts, model.nodes, model.nodesN, bounds=(0, None), doc='abs imag branch current')
     
+    model.real_branch_cur_seg = Var(model.ts, model.curEdges, model.nodes, model.nodesN, bounds=(0, None), doc='real branch current in linearization segment')
+    model.imag_branch_cur_seg = Var(model.ts, model.curEdges, model.nodes, model.nodesN, bounds=(0, None), doc='imag branch current in linearization segment')
     
     # equations
     
@@ -317,29 +385,29 @@ def add_network(model, inputs, parameter):
                                                   doc='constraint total var provided at node')
         
     def sum_var_consumed(model, ts, nodes):
-        return model.electricity_var_consumed[ts, nodes] == model.load_served[ts, nodes] * math.tan(math.acos(powerFactors['load'])) + \
-                                                            model.sum_battery_charge_grid_power[ts, nodes] * math.tan(math.acos(powerFactors['batteryChar']))
+        return model.electricity_var_consumed[ts, nodes] == model.load_served[ts, nodes] * math.tan(math.acos(model.powerFactors['load'])) + \
+                                                            model.sum_battery_charge_grid_power[ts, nodes] * math.tan(math.acos(model.powerFactors['batteryChar']))
     model.constraint_sum_var_consumed = Constraint(model.ts, model.nodes, rule=sum_var_consumed, \
                                                   doc='constraint total var provided at node')
       
     # real/imaginary power absorbed/injected at each node
     def real_power_inj_eq(model, ts, nodes):
-        return model.real_power_inj[ts, nodes] ==  (1/1000)*model.power_provided[ts, nodes]
+        return model.real_power_inj[ts, nodes] ==  (1/model.sBase)*model.power_provided[ts, nodes]
     model.constraint_real_power_inj_eq = Constraint(model.ts, model.nodes, rule=real_power_inj_eq, \
                                                   doc='real power injected eq')  
         
     def real_power_abs_eq(model, ts, nodes):
-        return model.real_power_abs[ts, nodes] ==  (1/1000)*model.power_consumed[ts, nodes]
+        return model.real_power_abs[ts, nodes] ==  (1/model.sBase)*model.power_consumed[ts, nodes]
     model.constraint_real_power_abs_eq = Constraint(model.ts, model.nodes, rule=real_power_abs_eq, \
                                                   doc='real power absorbed eq')  
         
     def imag_power_inj_eq(model, ts, nodes):
-        return model.imag_power_inj[ts, nodes] ==  (1/1000)*model.electricity_var_provided[ts, nodes]
+        return model.imag_power_inj[ts, nodes] ==  (1/model.sBase)*model.electricity_var_provided[ts, nodes]
     model.constraint_imag_power_inj_eq = Constraint(model.ts, model.nodes, rule=imag_power_inj_eq, \
                                                   doc='imag power injected eq')  
         
     def imag_power_abs_eq(model, ts, nodes):
-        return model.imag_power_abs[ts, nodes] ==  (1/1000)*model.electricity_var_consumed[ts, nodes]
+        return model.imag_power_abs[ts, nodes] ==  (1/model.sBase)*model.electricity_var_consumed[ts, nodes]
     model.constraint_imag_power_abs_eq = Constraint(model.ts, model.nodes, rule=imag_power_abs_eq, \
                                                   doc='imag power absorbed eq')
     
@@ -356,16 +424,20 @@ def add_network(model, inputs, parameter):
             
     else:
         
-        def pv_pq_constraint0(model, ts, nodes):
-            if model.node_slack.extract_values()[nodes]: return Constraint.Feasible # constraint only applies if node is not slack bus
-            else: return  model.electricity_var_pv[ts, nodes] == model.generation_pv[ts, nodes] * \
-                math.tan(math.acos(powerFactors['pv']))
-        
-        model.constraint_pv_pq_constraint0 = Constraint(model.ts, model.nodes, rule=pv_pq_constraint0, \
-                                                              doc='define var from powerfactor - pv') 
+        if model.enableConstantPf:  
+            
+            logging.info('fixed power factor for PV (non-slack)')
+            
+            def pv_pq_constraint0(model, ts, nodes):
+                if model.node_slack.extract_values()[nodes]: return Constraint.Feasible # constraint only applies if node is not slack bus
+                else: return  model.electricity_var_pv[ts, nodes] == model.generation_pv[ts, nodes] * \
+                    math.tan(math.acos(model.powerFactors['pv']))
+            
+            model.constraint_pv_pq_constraint0 = Constraint(model.ts, model.nodes, rule=pv_pq_constraint0, \
+                                                                  doc='define var from powerfactor - pv') 
         
         # add PQ limits for ders, if enabled
-        if genPqLimits:    
+        if model.enableGenPqLimits:    
             # 1/sqrt(2)*P + 1/sqrt(2)*Q <= S
             def pv_pq_constraint1(model, ts, nodes):
                 return  model.electricity_var_pv[ts, nodes] + model.generation_pv[ts, nodes] <= \
@@ -411,18 +483,22 @@ def add_network(model, inputs, parameter):
             
     else:
         
-        def genset_pq_constraint0(model, ts, nodes):
-            if model.node_slack.extract_values()[nodes]: return Constraint.Feasible # constraint only applies if node is not slack bus
-            else: return  model.electricity_var_genset[ts, nodes] == model.sum_genset_power[ts, nodes] * \
-                math.tan(math.acos(powerFactors['genset']))
-        
-        model.constraint_genset_pq_constraint0 = Constraint(model.ts, model.nodes, rule=genset_pq_constraint0, \
-                                                              doc='define var from powerfactor - genset') 
+        if model.enableConstantPf:  
+            
+            logging.info('fixed power factor for gensets (non-slack)')
+            
+            def genset_pq_constraint0(model, ts, nodes):
+                if model.node_slack.extract_values()[nodes]: return Constraint.Feasible # constraint only applies if node is not slack bus
+                else: return  model.electricity_var_genset[ts, nodes] == model.sum_genset_power[ts, nodes] * \
+                    math.tan(math.acos(model.powerFactors['genset']))
+            
+            model.constraint_genset_pq_constraint0 = Constraint(model.ts, model.nodes, rule=genset_pq_constraint0, \
+                                                                  doc='define var from powerfactor - genset') 
         
         # logging.warning('need to limit reactive power for units not operating?')
          
         # add PQ limits for ders, if enabled
-        if genPqLimits:
+        if model.enableGenPqLimits:
             # 1/sqrt(2)*P + 1/sqrt(2)*Q <= S
             def genset_pq_constraint1(model, ts, nodes):
                 return  model.electricity_var_genset[ts, nodes] + model.sum_genset_power[ts, nodes] <= \
@@ -430,7 +506,6 @@ def add_network(model, inputs, parameter):
             
             model.constraint_genset_pq_constraint1 = Constraint(model.ts, model.nodes, rule=genset_pq_constraint1, \
                                                                   doc='reactive power constrait 1 - genset') 
-            logging.warning('need to add input stream for genset  max S')
             
             # 1/sqrt(2)*P - 1/sqrt(2)*Q <= S
             def genset_pq_constraint2(model, ts, nodes):
@@ -458,7 +533,7 @@ def add_network(model, inputs, parameter):
     
     # constrain var from batteries
     
-    logging.warning('model does not distinguish batteries and ev when defining reactive power')
+    logging.info('model uses same power factor for batteries and evs')
     
      # constrain var from batteries
     if not parameter['system']['battery']:
@@ -471,16 +546,20 @@ def add_network(model, inputs, parameter):
             
     else:
         
-        def battery_pq_constraint0(model, ts, nodes):
-            if model.node_slack.extract_values()[nodes]: return Constraint.Feasible # constraint only applies if node is not slack bus
-            else: return  model.electricity_var_battery[ts, nodes] == model.sum_battery_discharge_grid_power[ts, nodes] * \
-                math.tan(math.acos(powerFactors['batteryDisc']))
-        
-        model.constraint_battery_pq_constraint0 = Constraint(model.ts, model.nodes, rule=battery_pq_constraint0, \
-                                                              doc='define var from powerfactor - battery') 
+        if model.enableConstantPf:  
+            
+            logging.info('fixed power factor for batteries (non-slack)')
+            
+            def battery_pq_constraint0(model, ts, nodes):
+                if model.node_slack.extract_values()[nodes]: return Constraint.Feasible # constraint only applies if node is not slack bus
+                else: return  model.electricity_var_battery[ts, nodes] == model.sum_battery_discharge_grid_power[ts, nodes] * \
+                    math.tan(math.acos(model.powerFactors['batteryDisc']))
+            
+            model.constraint_battery_pq_constraint0 = Constraint(model.ts, model.nodes, rule=battery_pq_constraint0, \
+                                                                  doc='define var from powerfactor - battery') 
         
         # add PQ limits for ders, if enabled
-        if genPqLimits:    
+        if model.enableGenPqLimits:    
             # 1/sqrt(2)*P + 1/sqrt(2)*Q <= S
             def battery_pq_constraint1(model, ts, nodes):
                 return  model.electricity_var_battery[ts, nodes] + model.sum_battery_discharge_grid_power[ts, nodes] <= \
@@ -543,15 +622,15 @@ def add_network(model, inputs, parameter):
     def pf_real_branch_loss_eq(model, ts, nodes, nodesN):
                 return  model.real_branch_loss[ts, nodes, nodesN] == model.enableLosses * \
                     model.node_connection_UT[nodes, nodesN] * model.branch_real_imp[nodes, nodesN] * \
-                    (model.real_branch_cur_power_square[ts, nodes, nodesN] + model.imag_branch_cur_power_square[ts, nodes, nodesN])
+                    (model.real_branch_cur_square[ts, nodes, nodesN] + model.imag_branch_cur_square[ts, nodes, nodesN])
             
     model.constraint_pf_real_branch_loss_eq = Constraint(model.ts, model.nodes, model.nodesN, rule=pf_real_branch_loss_eq, \
                                                                   doc='real losses constriant') 
         
     def pf_imag_branch_loss_eq(model, ts, nodes, nodesN):
-                return  model.real_branch_loss[ts, nodes, nodesN] == model.enableLosses * \
+                return  model.imag_branch_loss[ts, nodes, nodesN] == model.enableLosses * \
                     model.node_connection_UT[nodes, nodesN] * model.branch_imag_imp[nodes, nodesN] * \
-                    (model.real_branch_cur_power_square[ts, nodes, nodesN] + model.imag_branch_cur_power_square[ts, nodes, nodesN])
+                    (model.real_branch_cur_square[ts, nodes, nodesN] + model.imag_branch_cur_square[ts, nodes, nodesN])
             
     model.constraint_pf_imag_branch_loss_eq = Constraint(model.ts, model.nodes, model.nodesN, rule=pf_real_branch_loss_eq, \
                                                                   doc='imag losses constriant') 
@@ -598,98 +677,212 @@ def add_network(model, inputs, parameter):
                     model.real_branch_cur[ts, n1, n2].fix(0)
                     model.imag_branch_cur[ts, n1, n2].fix(0)
                     
-    # Bus Voltage Limits               
-        
-    if model.consVoltMin:
-        
-        model.voltMin  = model.voltMin/math.cos((abs(model.thetaMin)+abs(model.thetaMin))/2) ;
-        
-    def pf_volt_limit_eq1(model, ts, nodes):
-        return model.voltage_imag[ts, nodes] <= \
-            (math.sin(model.thetaMax)-math.sin(model.thetaMin)) / \
-            (math.cos(model.thetaMax)-math.cos(model.thetaMin)) * \
-            (model.voltage_real[ts, nodes]-model.voltMin*math.cos(model.thetaMin)) \
-            + model.voltMin*math.sin(model.thetaMin)
-            
-    model.constraint_pf_volt_limit_eq1= Constraint(model.ts, model.nodes,rule=pf_volt_limit_eq1, \
-                                                                  doc='bus voltage limit constriant 1')
-        
-    def pf_volt_limit_eq2(model, ts, nodes):
-        return model.voltage_imag[ts, nodes] <= \
-            (math.sin(model.thetaMax)) / \
-            (math.cos(model.thetaMax)- 1) * \
-            (model.voltage_real[ts, nodes]-model.voltMax)
-            
-    model.constraint_pf_volt_limit_eq2= Constraint(model.ts, model.nodes,rule=pf_volt_limit_eq2, \
-                                                                  doc='bus voltage limit constriant 2')
-        
-    def pf_volt_limit_eq3(model, ts, nodes):
-        return model.voltage_imag[ts, nodes] <= \
-            (-1 * math.sin(model.thetaMin)) / \
-            (math.cos(model.thetaMin)- 1) * \
-            (model.voltage_real[ts, nodes]-model.voltMax)
-            
-    model.constraint_pf_volt_limit_eq3= Constraint(model.ts, model.nodes,rule=pf_volt_limit_eq3, \
-                                                                  doc='bus voltage limit constriant 3')
-        
-    def pf_volt_limit_eq4(model, ts, nodes):
-        return model.voltage_imag[ts, nodes] <= \
-            model.voltage_real[ts, nodes] * math.tan(model.thetaMax)
-            
-    model.constraint_pf_volt_limit_eq4= Constraint(model.ts, model.nodes,rule=pf_volt_limit_eq4, \
-                                                                  doc='bus voltage limit constriant 4')
-        
-    def pf_volt_limit_eq5(model, ts, nodes):
-        return model.voltage_imag[ts, nodes] >= \
-            model.voltage_real[ts, nodes] * math.tan(model.thetaMin)
-            
-    model.constraint_pf_volt_limit_eq5= Constraint(model.ts, model.nodes,rule=pf_volt_limit_eq5, \
-                                                                  doc='bus voltage limit constriant 5')
-        
-    # CURRENT SQUARE APPROXIMATION AND LIMITS
+    # Bus Voltage Limits    
 
-    def pf_pos_imag_limit(model, ts, nodes, nodesN, edge):
-        # don't apply when upper-triangle connection not present
-        if model.node_connection_UT.extract_values()[nodes, nodesN]==0: return Constraint.Feasible
-        # only apply for edges <= model.nEdges
-        if model.curEdgeNos.extract_values()[edge] > model.nEdges/2: return Constraint.Feasible
-        else:
-            return model.imag_branch_cur[ts, nodes, nodesN] <= \
-                math.sin(model.curEdgeNos[edge] * model.edgeAngle) * model.line_capacity[nodes, nodesN] + \
-                (math.sin(model.curEdgeNos[edge] * model.edgeAngle) - math.sin((model.curEdgeNos[edge] - 1) * model.edgeAngle)) / \
-                (math.cos(model.curEdgeNos[edge] * model.edgeAngle) - math.cos((model.curEdgeNos[edge] - 1) * model.edgeAngle)) * \
-                (model.real_branch_cur[ts, nodes, nodesN] - math.cos(model.curEdgeNos[edge] * model.edgeAngle) * model.line_capacity[nodes, nodesN])
+    # add full voltage and angle constraints if enableVoltageAngleConstraint enabled           
+    if model.enableVoltageAngleConstraint:
+        
+        logging.info('applying voltage angle constraints')
+        
+        if model.useConsVoltMin:
             
-    model.constraint_pf_pos_imag_limit= Constraint(model.ts, model.nodes, model.nodes, model.curEdges ,rule=pf_pos_imag_limit, \
-                                                                  doc='positive branch imag current limit linearization')
-
-    def pf_neg_imag_limit(model, ts, nodes, nodesN, edge):
-        # don't apply when upper-triangle connection not present
-        if model.node_connection_UT.extract_values()[nodes, nodesN]==0: return Constraint.Feasible
-        # only apply for edges <= model.nEdges
-        if model.curEdgeNos.extract_values()[edge] <= model.nEdges/2: return Constraint.Feasible
-        else:
-            return model.imag_branch_cur[ts, nodes, nodesN] >= \
-                math.sin(model.curEdgeNos[edge] * model.edgeAngle) * model.line_capacity[nodes, nodesN] + \
-                (math.sin(model.curEdgeNos[edge] * model.edgeAngle) - math.sin((model.curEdgeNos[edge] - 1) * model.edgeAngle)) / \
-                (math.cos(model.curEdgeNos[edge] * model.edgeAngle) - math.cos((model.curEdgeNos[edge] - 1) * model.edgeAngle)) * \
-                (model.real_branch_cur[ts, nodes, nodesN] - math.cos(model.curEdgeNos[edge] * model.edgeAngle) * model.line_capacity[nodes, nodesN])
+            model.voltMin  = model.voltMin/math.cos((abs(model.thetaMin)+abs(model.thetaMin))/2) ;
             
-    model.constraint_pf_neg_imag_limit= Constraint(model.ts, model.nodes, model.nodes, model.curEdges ,rule=pf_neg_imag_limit, \
-                                                                  doc='negative branch imag current limit linearization')
+        def pf_volt_limit_eq1(model, ts, nodes):
+            return model.voltage_imag[ts, nodes] <= \
+                (math.sin(model.thetaMax)-math.sin(model.thetaMin)) / \
+                (math.cos(model.thetaMax)-math.cos(model.thetaMin)) * \
+                (model.voltage_real[ts, nodes]-model.voltMin*math.cos(model.thetaMin)) \
+                + model.voltMin*math.sin(model.thetaMin)
+                
+        model.constraint_pf_volt_limit_eq1= Constraint(model.ts, model.nodes,rule=pf_volt_limit_eq1, \
+                                                                      doc='bus voltage limit constriant 1')
+            
+        def pf_volt_limit_eq2(model, ts, nodes):
+            return model.voltage_imag[ts, nodes] <= \
+                (math.sin(model.thetaMax)) / \
+                (math.cos(model.thetaMax)- 1) * \
+                (model.voltage_real[ts, nodes]-model.voltMax)
+                
+        model.constraint_pf_volt_limit_eq2= Constraint(model.ts, model.nodes,rule=pf_volt_limit_eq2, \
+                                                                      doc='bus voltage limit constriant 2')
+            
+        def pf_volt_limit_eq3(model, ts, nodes):
+            return model.voltage_imag[ts, nodes] <= \
+                (-1 * math.sin(model.thetaMin)) / \
+                (math.cos(model.thetaMin)- 1) * \
+                (model.voltage_real[ts, nodes]-model.voltMax)
+                
+        model.constraint_pf_volt_limit_eq3= Constraint(model.ts, model.nodes,rule=pf_volt_limit_eq3, \
+                                                                      doc='bus voltage limit constriant 3')
+            
+        def pf_volt_limit_eq4(model, ts, nodes):
+            return model.voltage_imag[ts, nodes] <= \
+                model.voltage_real[ts, nodes] * math.tan(model.thetaMax)
+                
+        model.constraint_pf_volt_limit_eq4= Constraint(model.ts, model.nodes,rule=pf_volt_limit_eq4, \
+                                                                      doc='bus voltage limit constriant 4')
+            
+        def pf_volt_limit_eq5(model, ts, nodes):
+            return model.voltage_imag[ts, nodes] >= \
+                model.voltage_real[ts, nodes] * math.tan(model.thetaMin)
+                
+        model.constraint_pf_volt_limit_eq5= Constraint(model.ts, model.nodes,rule=pf_volt_limit_eq5, \
+                                                                      doc='bus voltage limit constriant 5')
+            
+    else:
+        # otherwise, just apply min/max voltage eqns
+        logging.info('applying voltage min/max constraints')
+        
+        def pf_volt_simple_limit_eq1(model, ts, nodes):
+            return  model.voltage_real[ts, nodes] >= model.voltMin
+                
+        model.constraint_ppf_volt_simple_limit_eq1= Constraint(model.ts, model.nodes,rule=pf_volt_simple_limit_eq1, \
+                                                                      doc='simple bus voltage limit constriant 1')
+            
+        def pf_volt_simple_limit_eq2(model, ts, nodes):
+            return  model.voltage_real[ts, nodes] <= model.voltMax
+                
+        model.constraint_ppf_volt_simple_limit_eq2= Constraint(model.ts, model.nodes,rule=pf_volt_simple_limit_eq2, \
+                                                                      doc='simple bus voltage limit constriant 2')
+        
+        
+        
+    # CURRENT SQUARE APPROXIMATION AND LIMITS 
+    # DER-CAM Method #1 EQUALITY
+    # REF: Franco, A mixed-integer LP model for the reconfiguration of radial electric distribution systems considering distributed generation
+    if model.curSqModel == 1:
+        
+        # fix current positibes/segment values to zero wher connection UT not present
+        for n1 in model.nodes:
+            for n2 in model.nodes:
+                for ts in model.ts:
+                    if model.node_connection_UT.extract_values()[n1, n2] == 0:
+                        model.real_branch_cur_pos[ts, n1, n2].fix(0)
+                        model.imag_branch_cur_pos[ts, n1, n2].fix(0)
+                        
+                        for seg in model.curEdges:
+                        
+                            model.real_branch_cur_seg[ts, seg, n1, n2].fix(0)
+                            model.imag_branch_cur_seg[ts, seg, n1, n2].fix(0)
+                        
+                        
+        # absolute values of currents                
+        def abs_cur_real_eq1(model, ts, nodes, nodesN):
+            return model.real_branch_cur_pos[ts, nodes, nodesN] >= \
+                model.real_branch_cur[ts, nodes, nodesN]
+        model.constraint_abs_cur_real_eq1= Constraint(model.ts, model.nodes, model.nodes, rule=abs_cur_real_eq1, \
+                                                                      doc='absolute val of real current eqn 1')
+        def abs_cur_real_eq2(model, ts, nodes, nodesN):
+            return model.real_branch_cur_pos[ts, nodes, nodesN] >= \
+                -1 *model.real_branch_cur[ts, nodes, nodesN]
+        model.constraint_abs_cur_real_eq2= Constraint(model.ts, model.nodes, model.nodes, rule=abs_cur_real_eq2, \
+                                                                      doc='absolute val of real current eqn 2')  
+        def abs_cur_imag_eq1(model, ts, nodes, nodesN):
+            return model.imag_branch_cur_pos[ts, nodes, nodesN] >= \
+                model.imag_branch_cur[ts, nodes, nodesN]
+        model.constraint_abs_cur_imag_eq1= Constraint(model.ts, model.nodes, model.nodes, rule=abs_cur_imag_eq1, \
+                                                                      doc='absolute val of imag current eqn 1')
+        def abs_cur_imag_eq2(model, ts, nodes, nodesN):
+            return model.imag_branch_cur_pos[ts, nodes, nodesN] >= \
+                -1 *model.imag_branch_cur[ts, nodes, nodesN]
+        model.constraint_abs_cur_imag_eq2= Constraint(model.ts, model.nodes, model.nodes, rule=abs_cur_imag_eq2, \
+                                                                      doc='absolute val of imag current eqn 2')
+                        
+        
+        # summation of current segments                
+        def cur_seg_summation_real(model, ts, nodes, nodesN):
+            return model.real_branch_cur_pos[ts, nodes, nodesN] == \
+                sum(model.real_branch_cur_seg[ts, segment, nodes, nodesN] for segment in model.curEdges)
+        model.constraint_cur_seg_summation_real= Constraint(model.ts, model.nodes, model.nodes, rule=cur_seg_summation_real, \
+                                                                      doc='summation of real current segments')     
+        def cur_seg_summation_imag(model, ts, nodes, nodesN):
+            return model.imag_branch_cur_pos[ts, nodes, nodesN] == \
+                sum(model.imag_branch_cur_seg[ts, segment, nodes, nodesN] for segment in model.curEdges)
+        model.constraint_cur_seg_summation_imag= Constraint(model.ts, model.nodes, model.nodes, rule=cur_seg_summation_imag, \
+                                                                      doc='summation of imag current segments')
+            
+        
+        # current segments cap limits              
+        def cur_seg_cap_limit_real(model, ts, nodes, nodesN, segment):
+            return model.real_branch_cur_seg[ts, segment, nodes, nodesN] <= \
+                model.line_capacity[nodes, nodesN] / model.nEdges
+        model.constraint_cur_seg_cap_limit_real= Constraint(model.ts, model.nodes, model.nodes, model.curEdges, rule=cur_seg_cap_limit_real, \
+                                                                      doc='real current segments cap limits')
+        def cur_seg_cap_limit_imag(model, ts, nodes, nodesN, segment):
+            return model.imag_branch_cur_seg[ts, segment, nodes, nodesN] <= \
+                model.line_capacity[nodes, nodesN] / model.nEdges
+        model.constraint_cur_seg_cap_limit_imag= Constraint(model.ts, model.nodes, model.nodes, model.curEdges, rule=cur_seg_cap_limit_imag, \
+                                                                      doc='imag current segments cap limits')
+            
+        # current squared linear approximation              
+        def cur_square_approx_real_eqn(model, ts, nodes, nodesN):
+            return model.real_branch_cur_square[ts, nodes, nodesN] == \
+                sum((2 * model.curEdgeNos[segment] - 1) * \
+                    model.line_capacity[nodes, nodesN] / model.nEdges * \
+                    model.real_branch_cur_seg[ts, segment, nodes, nodesN] 
+                for segment in model.curEdges)
+        model.constraint_cur_square_approx_real_eqn= Constraint(model.ts, model.nodes, model.nodes, rule=cur_square_approx_real_eqn, \
+                                                                      doc='real current squared linear approximation')
+        def cur_square_approx_imag_eqn(model, ts, nodes, nodesN):
+            return model.imag_branch_cur_square[ts, nodes, nodesN] == \
+                sum((2 * model.curEdgeNos[segment] - 1) * \
+                    model.line_capacity[nodes, nodesN] / model.nEdges * \
+                    model.imag_branch_cur_seg[ts, segment, nodes, nodesN] 
+                for segment in model.curEdges)
+        model.constraint_cur_square_approx_imag_eqn= Constraint(model.ts, model.nodes, model.nodes, rule=cur_square_approx_imag_eqn, \
+                                                                      doc='imag current squared linear approximation')    
 
-    # equate power/current var with current var since only method 1 currently implemented
-    def pf_real_cur_eqn(model, ts, nodes, nodesN):
-        return model.real_branch_cur[ts, nodes, nodesN] == model.real_branch_cur_power[ts, nodes, nodesN]
-               
-    model.constraint_pf_real_cur_eqn= Constraint(model.ts, model.nodes, model.nodes, rule=pf_real_cur_eqn, \
-                                                                  doc='equate real cur/power to imag cur for method 1 only')
+        # total apparent current capacity constraint
+        def total_current_cap_eqn(model, ts, nodes, nodesN):
+            return model.real_branch_cur_square[ts, nodes, nodesN] + model.imag_branch_cur_square[ts, nodes, nodesN] <= \
+                model.line_capacity[nodes, nodesN] ** 2
+        model.constraint_total_current_cap_eqn= Constraint(model.ts, model.nodes, model.nodes,  rule=total_current_cap_eqn, \
+                                                                      doc='total apparent current capacity constraint')            
+                        
+                        
+                        
+        
+    # CURRENT SQUARE APPROXIMATION AND LIMITS (DER-CAM Method #3 - Not working)
+    if model.curSqModel == 3:
+        def pf_pos_imag_limit(model, ts, nodes, nodesN, edge):
+            # don't apply when upper-triangle connection not present
+            if model.node_connection_UT.extract_values()[nodes, nodesN]==0: return Constraint.Feasible
+            # only apply for edges <= model.nEdges
+            if model.curEdgeNos.extract_values()[edge] > model.nEdges/2: return Constraint.Feasible
+            else:
+                return model.imag_branch_cur[ts, nodes, nodesN] <= \
+                    math.sin(model.curEdgeNos[edge] * model.edgeAngle) * model.line_capacity[nodes, nodesN] + \
+                    (math.sin(model.curEdgeNos[edge] * model.edgeAngle) - math.sin((model.curEdgeNos[edge] - 1) * model.edgeAngle)) / \
+                    (math.cos(model.curEdgeNos[edge] * model.edgeAngle) - math.cos((model.curEdgeNos[edge] - 1) * model.edgeAngle)) * \
+                    (model.real_branch_cur[ts, nodes, nodesN] - math.cos(model.curEdgeNos[edge] * model.edgeAngle) * model.line_capacity[nodes, nodesN])
+                
+        model.constraint_pf_pos_imag_limit= Constraint(model.ts, model.nodes, model.nodes, model.curEdges ,rule=pf_pos_imag_limit, \
+                                                                      doc='positive branch imag current limit linearization')
+    
+        def pf_neg_imag_limit(model, ts, nodes, nodesN, edge):
+            # don't apply when upper-triangle connection not present
+            if model.node_connection_UT.extract_values()[nodes, nodesN]==0: return Constraint.Feasible
+            # only apply for edges <= model.nEdges
+            if model.curEdgeNos.extract_values()[edge] <= model.nEdges/2: return Constraint.Feasible
+            else:
+                return model.imag_branch_cur[ts, nodes, nodesN] >= \
+                    math.sin(model.curEdgeNos[edge] * model.edgeAngle) * model.line_capacity[nodes, nodesN] + \
+                    (math.sin(model.curEdgeNos[edge] * model.edgeAngle) - math.sin((model.curEdgeNos[edge] - 1) * model.edgeAngle)) / \
+                    (math.cos(model.curEdgeNos[edge] * model.edgeAngle) - math.cos((model.curEdgeNos[edge] - 1) * model.edgeAngle)) * \
+                    (model.real_branch_cur[ts, nodes, nodesN] - math.cos(model.curEdgeNos[edge] * model.edgeAngle) * model.line_capacity[nodes, nodesN])
+                
+        model.constraint_pf_neg_imag_limit= Constraint(model.ts, model.nodes, model.nodes, model.curEdges ,rule=pf_neg_imag_limit, \
+                                                                      doc='negative branch imag current limit linearization')
+        
+        # fix current var to zero wher connection UT not present
+        for n1 in model.nodes:
+            for n2 in model.nodes:
+                for ts in model.ts:
+                    if model.node_connection_UT.extract_values()[n1, n2] == 0:
+                        model.real_branch_cur[ts, n1, n2].fix(0)
+                        model.imag_branch_cur[ts, n1, n2].fix(0)
 
-    def pf_imag_cur_eqn(model, ts, nodes, nodesN):
-        return model.imag_branch_cur[ts, nodes, nodesN] == model.imag_branch_cur_power[ts, nodes, nodesN]
-               
-    model.constraint_pf_imag_cur_eqn= Constraint(model.ts, model.nodes, model.nodes, rule=pf_imag_cur_eqn, \
-                                                                  doc='equate imag cur/power to imag cur for method 1 only')
 
 
 
@@ -697,6 +890,19 @@ def add_network(model, inputs, parameter):
 
 
 def calcYandZ(model):
+    '''
+    this function calculates the real/imag Y and Z bus matrices
+    based on line/transformer properties defined in the model object
+
+    Returns
+    -------
+    model : pyomo model
+        Model with new properties:
+            - model.realYBus
+            - model.imagYBus
+            - model.realZBus
+            - model.imagZBus
+    '''
     
      # calc realYBus & imagYBus
     
@@ -809,6 +1015,25 @@ def calcYandZ(model):
     return model
 
 def add_network_simple(model, inputs, parameter):
+    '''
+    this function adds network equations to an existing DOPER pyomo model
+    for simple power exchang
+
+    Parameters
+    ----------
+    model : pyomo model
+        existing DOPER base model.
+    inputs : pandas data frame
+        dataframe containing time-series inputs.
+    parameter : dict
+        dict containing model input paramters.
+
+    Returns
+    -------
+    model : pyomo model
+        DOPER pyomo model with added simple network equations.
+
+    '''
         
     # create alias of node set
     # Note: pyomo doesn't seem to have ability to explicitly alias sets, so just copying nodes set
