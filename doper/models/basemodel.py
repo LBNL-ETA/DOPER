@@ -133,6 +133,24 @@ def base_model(inputs, parameter):
         model.grid_co2_intensity = Param(model.ts, initialize=0, \
                          doc='grid CO2 intensity [kg/kWh]')
         logging.info('grid CO2 missing from input. Default value = 0')
+        
+    if 'utility_rtp' in inputs.columns:
+        model.utility_rtp = Param(model.ts, initialize=pandas_to_dict(inputs['utility_rtp']), \
+                         doc='utility real time price [$/kWh]')
+    else:
+        model.utility_rtp = Param(model.ts, initialize=0, \
+                         doc='utility real time price - Disabled [$/kWh')
+        logging.info('utility real-time price missing from input. Default value = 0')
+        
+    if 'utility_rtp_export' in inputs.columns:
+        model.utility_rtp_export = Param(model.ts, initialize=pandas_to_dict(inputs['utility_rtp_export']), \
+                         doc='utility real time export price [$/kWh]')
+    elif 'utility_rtp' in inputs.columns:
+        model.utility_rtp_export = Param(model.ts, initialize=pandas_to_dict(inputs['utility_rtp']), \
+                         doc='utility real time export price [$/kWh]')
+    else:
+        model.utility_rtp_export = Param(model.ts, initialize=0, \
+                         doc='utility real time export price - Disabled [$/kWh')
      
         
     # map load profile & pv generation profiles to nodes
@@ -268,11 +286,16 @@ def base_model(inputs, parameter):
     
     # cost and objective vars
     model.energy_cost = Var(model.ts, bounds=(0, None), doc='energy cost [$]')
+    model.rtp_cost = Var(model.ts, bounds=(0, None), doc='RTP cost [$]')
     
     model.energy_export_revenue = Var(model.ts, bounds=(0, None), doc='energy export revenue [$]')
+    model.rtp_export_revenue = Var(model.ts, bounds=(0, None), doc='RTP export revenue [$]')
+    
     model.sum_energy_cost = Var(doc='energy cost [$]')
     model.sum_demand_cost = Var(doc='demand cost [$]')
+    model.sum_rtp_cost = Var(doc='real-time price energy cost [$]')
     model.sum_export_revenue = Var(doc='export energy revenue [$]')
+    model.sum_rtp_export_revenue = Var(doc='RTP export energy revenue [$]')
     model.sum_regulation_revenue = Var(doc='regulation revenue [$]')
     model.total_cost = Var(doc='total energy cost [$]')
    
@@ -479,6 +502,7 @@ def base_model(inputs, parameter):
         
     # Define Objective
     
+    # TOU energy costs
     def energy_cost_calculation(model, ts):
         if ts == model.ts.at(-1):
             return model.energy_cost[ts] == 0
@@ -498,11 +522,50 @@ def base_model(inputs, parameter):
     model.constraint_energy_export_revenue_calculation = Constraint(model.ts, rule=energy_export_revenue_calculation, \
                                                                     doc='constraint energy export revenue calculation')
     
-    
     def sum_energy_cost(model):
         return model.sum_energy_cost == sum(model.energy_cost[t] for t in accounting_ts)
     model.constraint_sum_energy_cost = Constraint(rule=sum_energy_cost, doc='energy cost calculation')
     
+    def sum_export_revenue(model):
+        export = 0
+        if parameter['site']['export_max'] > 0:
+            export = -1* sum(model.energy_export_revenue[t] for t in accounting_ts)
+        return model.sum_export_revenue == export
+    model.constraint_sum_export_revenue = Constraint(rule=sum_export_revenue, doc='export revenue calculation')
+        
+    # RTP energy costs 
+    def rtp_cost_calculation(model, ts):
+        if ts == model.ts.at(-1):
+            return model.rtp_cost[ts] == 0
+        else:
+            return model.rtp_cost[ts] == \
+                model.grid_import_site[ts] * model.utility_rtp[ts] \
+                / model.timestep_scale_fwd[ts]
+    model.constraint_rtp_cost_calculation = Constraint(model.ts, rule=rtp_cost_calculation, \
+                                                          doc='constraint RTP cost calculation')
+        
+    def rtp_export_revenue_calculation(model, ts):
+        if ts == model.ts.at(-1):
+            return model.rtp_export_revenue[ts] == 0
+        else:
+            return model.rtp_export_revenue[ts] == \
+                model.grid_export_site[ts] * model.utility_rtp_export[ts] \
+                / model.timestep_scale_fwd[ts]
+    model.constraint_rtp_export_revenue_calculation = Constraint(model.ts, rule=rtp_export_revenue_calculation, \
+                                                                    doc='constraint RTP energy export revenue calculation')
+    
+    def sum_rtp_cost(model):
+        return model.sum_rtp_cost == sum(model.rtp_cost[t] for t in accounting_ts)
+    model.constraint_sum_rtp_cost = Constraint(rule=sum_rtp_cost, doc='RTP energy cost summation')
+    
+    def sum_rtp_export_revenue(model):
+        export = 0
+        if parameter['site']['export_max'] > 0:
+            export = -1* sum(model.rtp_export_revenue[t] for t in accounting_ts)
+        return model.sum_rtp_export_revenue == export
+    model.constraint_sum_rtp_export_revenue = Constraint(rule=sum_rtp_export_revenue, doc='export RTP revenue calculation')
+    
+    # power demand costs
     def sum_demand_cost(model):
         demand = 0
         if parameter['site']['customer'] == 'Commercial':
@@ -511,12 +574,7 @@ def base_model(inputs, parameter):
         return model.sum_demand_cost == demand
     model.constraint_sum_demand_cost = Constraint(rule=sum_demand_cost, doc='demand cost calculation')
     
-    def sum_export_revenue(model):
-        export = 0
-        if parameter['site']['export_max'] > 0:
-            export = -1* sum(model.energy_export_revenue[t] for t in accounting_ts)
-        return model.sum_export_revenue == export
-    model.constraint_sum_export_revenue = Constraint(rule=sum_export_revenue, doc='export revenue calculation')
+    
     
     # def sum_regulation_revenue(model):
     #     regulation = 0
