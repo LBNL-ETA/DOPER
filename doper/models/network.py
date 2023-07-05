@@ -129,7 +129,7 @@ def add_network_powerflow(model, inputs, parameter):
     
     pfSettings = parameter['network']['settings']
     
-    model.enableLosses = pfSettings['enableLosses']
+    model.enableLosses = int(pfSettings['enableLosses'])
     model.enableGenPqLimits = pfSettings['enableGenPqLimits']
     model.useConsVoltMin = pfSettings['useConsVoltMin']
     
