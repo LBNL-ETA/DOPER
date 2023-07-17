@@ -65,7 +65,7 @@ def download_cbc(cbc_version='2.10.8', root=get_root()):
     cmd += f' && mv bin/cbc ../cbc_{cbc_version}'
     cmd += ' && cd .. && rm -rf tmp_solvers'
     sp.check_output(cmd, shell=True, cwd=root)
-    return f'cbc_{cbc_version}'
+    return os.path.join(root, f'cbc_{cbc_version}')
 
 def pandas_to_dict(df, columns=None, convertTs=False):
     '''
