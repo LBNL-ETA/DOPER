@@ -1,50 +1,65 @@
-import sys
+# Distributed Optimal and Predictive Energy Resources (DOPER) Copyright (c) 2019
+# The Regents of the University of California, through Lawrence Berkeley
+# National Laboratory (subject to receipt of any required approvals
+# from the U.S. Dept. of Energy). All rights reserved.
+
+""""Distributed Optimal and Predictive Energy Resources
+Controller wrapper module.
+"""
+
+# pylint: disable=invalid-name, import-error, too-many-instance-attributes
+# pylint: disable=redefined-outer-name, broad-exception-caught, unused-argument
+# pylint: disable=too-many-statements, unused-import, unused-variable
+
+
 import os
 import logging
 import pandas as pd
-import numpy as np
-import json
+
+
 from fmlc import eFMU
 from pyomo.environ import Objective, minimize
 
 # import optimization modules
 from .wrapper import DOPER
 from .utility import get_solver, get_root, standard_report
-from .basemodel import base_model, plot_standard1, plot_pv_only, plot_dynamic, default_output_list
+from .basemodel import base_model, default_output_list
 from .battery import add_battery
 from .genset import add_genset
 from .loadControl import add_loadControl
-from .example import (example_inputs, example_parameter_add_genset, 
-                    example_inputs_offgrid, example_inputs_planned_outage, 
-                    example_parameter_add_battery, example_parameter_add_loadcontrol, 
-                    example_inputs_load_shed, example_inputs_fueloutage, example_inputs_variable_co2)
-
-
+from .example import (example_inputs, example_parameter_add_genset,
+                      example_inputs_offgrid, example_inputs_planned_outage,
+                      example_parameter_add_battery, example_parameter_add_loadcontrol,
+                      example_inputs_load_shed, example_inputs_fueloutage,
+                      example_inputs_variable_co2)
 
 class OptimizationWrapper(eFMU):
+    """wrapper class for DOPER"""
+
     def __init__(self):
         self.input = {
             'timeseries-data': None, #json-ized df of timeseries input data
             'parameter-data': None, # dict of model/setting parameters
             'output-list': None, # list of dict of output instructions for custom ouputs
-        }      
-        
+        }
+
         self.output = {
             'opt-summary': None,
             'output-data': None,
         }
-        
+
         # initialize input attributes
         self.tsInputs = None
         self.modelParams = None
         self.userOutputs = None
-        
+
         # initialize internal attributes
         self.model = None
         self.results = None
         self.outputList = None
         self.solverPath  = None
-        
+        self.modelConstructor = None
+
         # initialize output attributes
         self.duration = None
         self.objective = None
@@ -52,13 +67,13 @@ class OptimizationWrapper(eFMU):
         self.tsResults = None
         self.modelPyomo = None
         self.resultPyomo = None
-        
+
         self.tsResultsJson = None
         self.optSummary = None
-        
+
         self.msg = None
-        
-        
+        self.errorFlag = True
+
     def construct_model_function(self, inputs, parameter):
         '''
         method returns a function for constructing an optimization model,
@@ -82,8 +97,7 @@ class OptimizationWrapper(eFMU):
             function to construct optimization model
 
         '''
-        
-        
+
         def control_model(inputs, parameter):
             # construct pyomo model based on assets included in parameters
             model = base_model(inputs, parameter)
@@ -93,36 +107,35 @@ class OptimizationWrapper(eFMU):
                 model = add_genset(model, inputs, parameter)
             if parameter['system']['load_control']:
                 model = add_loadControl(model, inputs, parameter)
-            
+
             # construct objective function based on weights include in parameters
             def objective_function(model):
                 return model.sum_energy_cost * parameter['objective']['weight_energy'] \
                        + model.sum_demand_cost * parameter['objective']['weight_demand'] \
                        + model.sum_export_revenue * parameter['objective']['weight_export'] \
-                       + model.sum_regulation_revenue * parameter['objective']['weight_regulation'] \
+                       + model.sum_regulation_revenue \
+                         * parameter['objective']['weight_regulation'] \
                        + model.fuel_cost_total * parameter['objective']['weight_fuel'] \
                        + model.load_shed_cost_total * parameter['objective']['weight_load_shed'] \
                        + model.co2_total * parameter['objective']['weight_co2'] \
-                       
-            
-            model.objective = Objective(rule=objective_function, sense=minimize, doc='objective function')
-            
+
+            model.objective = Objective(rule=objective_function, sense=minimize,
+                                        doc='objective function')
             return model
-        
         return control_model
-        
-       
+
     def compute(self):
-        
+        """main compute function."""
+
         # initialize msg to return
         self.msg = None
         self.errorFlag = False
-        
+
         # unpack inputs
         self.tsInputs = self.input['timeseries-data']
         self.modelParams = self.input['parameter-data']
         self.userOutputs = self.input['output-list']
-        
+
         # initialize model objects to empty values
         self.model = None
         self.results = None
@@ -138,29 +151,28 @@ class OptimizationWrapper(eFMU):
             'objective': 0,
             'termination': 'failed' 
         }
-        
-        
+
         # try to convert tsInput from json to df
         try:
             self.tsInputs = pd.read_json(self.tsInputs)
         except Exception as e:
-            self.msg = 'ERROR: Input processing failed' + str(e)
+            self.msg += 'ERROR: Input processing failed' + str(e)
             self.tsInputs = None
             self.errorFlag = True
-            
-        
+
         # check if required inputs have been passed
         if(self.tsInputs is None or self.modelParams is None):
-            self.msg = 'Error: required inputs missing'
+            self.msg += 'Error: required inputs missing'
             self.errorFlag = True
         else:
             try:
                 # define model and objective func using construct_model_function method
-                self.modelConstructor = self.construct_model_function(self.tsInputs, self.modelParams)
+                self.modelConstructor = self.construct_model_function(self.tsInputs,
+                                                                      self.modelParams)
             except Exception as e:
-                self.msg = 'ERROR: model contructor failed ' + str(e)
-                self.errorFlag = True                
-        
+                self.msg += 'ERROR: model contructor failed ' + str(e)
+                self.errorFlag = True
+
         # use user-specfied inputs, if provied
         if self.userOutputs is not None:
             self.outputList = self.userOutputs
@@ -168,34 +180,35 @@ class OptimizationWrapper(eFMU):
             # otherwise, load default output list
             self.outputList = default_output_list(self.modelParams)
 
-        
         # try to run optimization
         if not self.errorFlag:
             try:
                 # Define the path to the solver executable
-                self.solverPath = get_solver(self.modelParams['solver']['solver_name'], solver_dir=self.modelParams['solver']['solver_path'])
-                
+                self.solverPath = get_solver(self.modelParams['solver']['solver_name'],
+                                             solver_dir=self.modelParams['solver']['solver_path'])
+
                 # Initialize DOPER
                 self.model = DOPER(model=self.modelConstructor,
-                                 parameter=self.modelParams,
-                                 solver_path=self.solverPath ,
-                                 output_list=self.outputList)
-                
+                                   parameter=self.modelParams,
+                                   solver_path=self.solverPath ,
+                                   output_list=self.outputList)
+
                 # Conduct optimization
                 self.results = self.model.do_optimization(self.tsInputs)
-                
+
                 # Get results
-                duration, objective, tsResults, modelPyomo, resultPyomo, termination, parameter = self.results
-                
+                duration, objective, tsResults, modelPyomo, \
+                    resultPyomo, termination, parameter = self.results
+
                 # extract results and store as attributes
                 self.duration = duration
                 self.objective = objective
                 self.termination = str(termination)
-                
+
                 self.tsResults = tsResults
                 self.modelPyomo = modelPyomo
                 self.resultPyomo = resultPyomo
-                
+
                 # process results for self.output
                 self.tsResultsJson = self.tsResults.to_json()
                 self.optSummary = {
@@ -203,26 +216,22 @@ class OptimizationWrapper(eFMU):
                     'objective': self.objective,
                     'termination': self.termination 
                 }
-
             except Exception as e:
-                self.msg = 'ERROR: Optimization failed' + str(e)
-            
-            
+                self.msg += 'ERROR: Optimization failed' + str(e)
+
             # pack optimization outputs into self.output
             self.output['opt-summary'] = self.optSummary
             self.output['output-data'] = self.tsResultsJson
-        
 
         # if no msg has been define, default to Done
         if self.msg is None:
-             self.msg = 'Done.'
-        
+            self.msg = 'Done.'
+
         # Return status message
         return self.msg
 
-
 if __name__ == '__main__':
-    
+
     # set logging
     logging.basicConfig(
     format='%(asctime)s %(levelname)-8s %(message)s',
@@ -235,19 +244,19 @@ if __name__ == '__main__':
     parameter = example_parameter_add_genset(parameter)
     # parameter = example_parameter_add_loadcontrol(parameter)
     parameter = example_parameter_add_battery(parameter)
-    
+
     # add solver name and path to parameter
     parameter['solver'] = {
         'solver_name': 'cbc',
         'solver_path': os.path.join(get_root(), 'solvers')
     }
-    
+
     # define timeseries data from example module
     tsData = example_inputs(parameter, load='B90', scale_load=150, scale_pv=100)
-    
+
     # convert df to json
     tsData = tsData.to_json()
-    
+
     # define custom outputs to add
     myOutputs = [{
         'name': 'batSOC',
@@ -255,24 +264,21 @@ if __name__ == '__main__':
         'index': 'batteries',
         'df_label': 'Energy in Battery %s'
     }]
-    
 
-    input = {
+    inputs = {
         'timeseries-data': tsData, #json-ized df of timeseries input data
         'parameter-data': parameter, # dict of model/setting parameters
         'output-list': myOutputs,
     }
-    
 
     # instantiate forecast framework wrapper
     newWrapper = OptimizationWrapper()
 
     # pass inputs
-    newWrapper.input = input
+    newWrapper.input = inputs
 
     # run compute method to train and predict
     newWrapper.compute()
-    
+
     print(newWrapper.msg)
-    
     print(standard_report(newWrapper.results))

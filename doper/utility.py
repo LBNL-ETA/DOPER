@@ -1,42 +1,46 @@
-#!/usr/bin/env python
-'''
-    INTERNAL USE ONLY
-    Utility Module of DOPER package (v1.0)
-    cgehbauer@lbl.gov
+# Distributed Optimal and Predictive Energy Resources (DOPER) Copyright (c) 2019
+# The Regents of the University of California, through Lawrence Berkeley
+# National Laboratory (subject to receipt of any required approvals
+# from the U.S. Dept. of Energy). All rights reserved.
 
-    Version info (v1.0):
-        -) Initial disaggregation of old code.
-'''
+""""Distributed Optimal and Predictive Energy Resources
+Utility module.
+"""
+
+# pylint: disable=invalid-name, import-outside-toplevel, bare-except, dangerous-default-value
+# pylint: disable=unused-variable, too-many-arguments, chained-comparison
 
 import os
 import sys
+import logging
 import platform
 import pandas as pd
 import numpy as np
-import logging
 
 def fix_bug_pyomo():
-    # Fix bug in pyomo when intializing solver (timeout after 5s)
+    """Fix bug in pyomo when intializing solver (timeout after 5s)"""
     from importlib import reload
     import pyomo
     path_pyomo = os.path.dirname(pyomo.__file__)
     path_pyomo_asl = os.path.join(path_pyomo, 'solvers', 'plugins', 'solvers', 'ASL.py')
     if os.path.exists(path_pyomo_asl):
-        with open(path_pyomo_asl, 'r') as f:
+        with open(path_pyomo_asl, 'r', encoding='utf8') as f:
             pyomo_asl = f.read()
         if '[solver_exec, "-v"]' in pyomo_asl:
             pyomo_asl = pyomo_asl.replace('[solver_exec, "-v"]', '[solver_exec, "-v", "exit"]')
-            with open(path_pyomo_asl, 'w') as f:
+            with open(path_pyomo_asl, 'w', encoding='utf8') as f:
                 f.write(pyomo_asl)
         elif '[solver_exec, "-v", "exit"]' in pyomo_asl:
             pass
         else:
-            raise ValueError(f'The snippet [solver_exec, "-v"] does not exist in Pyomo ASL.py at {path_pyomo_asl}.')
+            raise ValueError('The snippet [solver_exec, "-v"] does not exist' + \
+                f' in Pyomo ASL.py at {path_pyomo_asl}.')
     else:
         raise ValueError(f'The Pyomo ASL.py file does not exist at {path_pyomo_asl}.')
     reload(pyomo)
 
 def get_root(f=None):
+    """get the root location"""
     try:
         if not f:
             f = __file__
@@ -58,14 +62,15 @@ def pandas_to_dict(df, columns=None, convertTs=False):
             d (dict): Python dictionary with the series input.
     '''
     d = {}
-    
+
     if convertTs:
         # convert timestamp index to unix time
         df.index = df.index.view(np.int64)/1e9
-    
+
     if isinstance(df, pd.DataFrame):
         df = df.copy(deep=True)
-        if columns: df.columns = columns
+        if columns:
+            df.columns = columns
         for c in df.columns:
             for k,v in df[c].items():
                 d[k,c] = int(v) if v % 1 == 0 else float(v)
@@ -94,18 +99,16 @@ def add_second_index(dataDict, newIndex):
     dict
         2-d dict with newIndex added as second key
         e.g. (key1) -> (key1, {newIndex})
-
     '''
-    
+
     # initilize new dict
     dataDict2 = {}
-     
+
     #loop through keys, added second static key
     for key in dataDict.keys():
         dataDict2[key, newIndex] = dataDict[key]
-        
-    return dataDict2
 
+    return dataDict2
 
 def pyomo_read_parameter(temp):
     '''
@@ -124,21 +127,19 @@ def pyomo_read_parameter(temp):
     for k,v in zip(temp.keys(), temp.values()):
         d[k] = v
     return d
-    
+
 def get_solver(solver, solver_dir=os.path.join(get_root(), 'solvers')):
     '''
         Utility to return the solverpath readable for Pyomo.
     '''
     system = platform.system()
     bit = '64' if sys.maxsize > 2**32 else '32'
-    if system == 'Windows': return os.path.join(solver_dir, 'Windows'+bit, solver+'.exe')
-    else: return os.path.join(solver_dir, 'Linux'+bit, solver)
-   
-    
+    if system == 'Windows':
+        return os.path.join(solver_dir, 'Windows'+bit, solver+'.exe')
+    return os.path.join(solver_dir, 'Linux'+bit, solver)
+
 def extract_properties(parameter, tech_name, prop_name, set_list=None):
     '''
-    
-
     Parameters
     ----------
     parameter : dict
@@ -154,22 +155,18 @@ def extract_properties(parameter, tech_name, prop_name, set_list=None):
     -------
     dataDict : TYPE
         DESCRIPTION.
-
     '''
     # if no set list is provided, extract data and assingn to numeric index
     if set_list is None:
         n = len(parameter[tech_name])
         data = parameter[tech_name]
-        
         dataDict = { ii : data[ii][prop_name] for ii in range(n) }
     # if set list is provided, use values of set list to extract data using name as dict key
     else:
         dataDict = {}
         for pp in parameter[tech_name]:
             dataDict[pp['name']] = pp[prop_name]
-        
     return dataDict
-
 
 def resample_variable_ts(data, reduced_start=60, reduced_ts=30, cols_fill=[]):
     '''
@@ -187,50 +184,49 @@ def resample_variable_ts(data, reduced_start=60, reduced_ts=30, cols_fill=[]):
     shift = 0
 
     data_temp = data.copy(deep=True)
-    data2 = data.loc[reduced_start_ix:].shift(shift).resample('{}T'.format(reduced_ts),
-                                                              offset='{}T'.format(reduced_start)).asfreq().copy(deep=True)
-    
+    data2 = data.loc[reduced_start_ix:].shift(shift).resample(f'{reduced_ts}T',
+        offset=f'{reduced_start}T').asfreq().copy(deep=True)
+
     for c in data2.columns:
         if c in cols_fill:
             data2[c] = data.loc[reduced_start_ix-pd.DateOffset(minutes=reduced_ts):, c].shift( \
-                shift).resample('{}T'.format(reduced_ts), offset='{}T'.format(reduced_start)).ffill()
+                shift).resample(f'{reduced_ts}T',
+                                offset=f'{reduced_start}T').ffill()
         else:
             data2[c] = data.loc[reduced_start_ix-pd.DateOffset(minutes=reduced_ts):, c].shift( \
-                shift).resample('{}T'.format(reduced_ts), offset='{}T'.format(reduced_start)).mean()
-            
+                shift).resample(f'{reduced_ts}T',
+                                offset=f'{reduced_start}T').mean()
+
     data = pd.concat([data.loc[:reduced_start_ix-pd.DateOffset(minutes=data_ts)],
                       data2.loc[reduced_start_ix:]],
                      sort=True)
     data = data.iloc[:-1]
     data.loc[data_temp.index[-1]] = data_temp.loc[data_temp.index[-1]]
     return data
-    
 
 def standard_report(res, only_solver=False):
+    """standard report for simulaiton result"""
     duration, objective, df, model, result, termination, parameter = res
     output = ''
     try:
-        output += 'Solver\t\t\t{!s}\n'.format(' '.join(result['Solver'][0]['Message'].split(' ')[:2]))
+        msg = ' '.join(result['Solver'][0]['Message'].split(' ')[:2])
+        output += f'Solver\t\t\t{msg}\n'
     except:
         pass
-    output += 'Duration [s]\t\t{!s}\n'.format(round(duration, 2))
+    output += f'Duration [s]\t\t{round(duration, 2)}\n'
     if not only_solver and objective:
-        output += 'Objective [$]\t\t{!s}\t\t\t{!s} (Total Cost)\n'.format(round(objective, 2), round(model.total_cost.value, 2))
-        output += 'Cost [$]\t\t{!s} (Energy)\t{!s} (Demand)\n' \
-                    .format(round(model.sum_energy_cost.value * parameter['objective']['weight_energy'], 2), \
-                            round(model.sum_demand_cost.value * parameter['objective']['weight_demand'], 2))
-        #output += 'Cost [$]\t\t{!s} (Energy)\t{!s} (Demand)\t\t{!s} (Degradation)\n' \
-        #            .format(round(model.sum_energy_cost.value* parameter['objective']['weight_energy'], 2), \
-        #                    round(model.sum_demand_cost.value * parameter['objective']['weight_demand'], 2), \
-        #                    round(model.sum_degradation_cost.value * parameter['objective']['weight_degradation'], 2))
-        # output += 'Revenue [$]\t\t{!s} (Export)\t\t{!s} (Regulation)\n' \
-        #             .format(round(model.sum_export_revenue.value * parameter['objective']['weight_export'], 2), \
-        #                     round(model.sum_regulation_revenue.value * parameter['objective']['weight_regulation'], 2))
-        output += 'CO2 Emissions [kg]\t\t{!s}\n' \
-                    .format(round(model.co2_total.value, 2))
+        output += f'Objective [$]\t\t{round(objective, 2)}\t\t\t'
+        output += f'{round(model.total_cost.value, 2)} (Total Cost)\n'
+        ce = round(model.sum_energy_cost.value * parameter['objective']['weight_energy'], 2)
+        cd = round(model.sum_demand_cost.value * parameter['objective']['weight_demand'], 2)
+        output += f'Cost [$]\t\t{ce} (Energy)\t{cd} (Demand)\n' \
+        # model.sum_degradation_cost.value * parameter['objective']['weight_degradation'], 2))
+        # model.sum_export_revenue.value * parameter['objective']['weight_export'], 2), \
+        # model.sum_regulation_revenue.value * parameter['objective']['weight_regulation'], 2))
+        output += f'CO2 Emissions [kg]\t\t{round(model.co2_total.value, 2)}\n'
         #output += str(round(df[['Reg Revenue [$]']].sum().values[0], 2))
     return output
-    
+
 def plot_streams(axs, temp, title=None, ylabel=None, legend=False, loc=1, times=[8,12,18,22]):
     '''
         Utility to simplify plotting of subplots.
@@ -249,25 +245,29 @@ def plot_streams(axs, temp, title=None, ylabel=None, legend=False, loc=1, times=
     axs.legend(temp.columns, loc=2)
     if times:
         idx0 = temp.index[temp.index.minute==0]
-        if times[0] != None:
-            axs.plot([idx0[idx0.hour==times[0]],idx0[idx0.hour==times[0]]],[temp.values.min(),temp.values.max()], color='orange', linestyle=':')
-        if times[1] != None:
-            axs.plot([idx0[idx0.hour==times[1]],idx0[idx0.hour==times[1]]],[temp.values.min(),temp.values.max()], color='red', linestyle=':')
-        if times[2] != None:
-            axs.plot([idx0[idx0.hour==times[2]],idx0[idx0.hour==times[2]]],[temp.values.min(),temp.values.max()], color='red', linestyle=':')
-        if times[3] != None:
-            axs.plot([idx0[idx0.hour==times[3]],idx0[idx0.hour==times[3]]],[temp.values.min(),temp.values.max()], color='orange', linestyle=':')
+        if times[0] is not None:
+            axs.plot([idx0[idx0.hour==times[0]],idx0[idx0.hour==times[0]]],
+                      [temp.values.min(),temp.values.max()], color='orange', linestyle=':')
+        if times[1] is not None:
+            axs.plot([idx0[idx0.hour==times[1]],idx0[idx0.hour==times[1]]],
+                      [temp.values.min(),temp.values.max()], color='red', linestyle=':')
+        if times[2] is not None:
+            axs.plot([idx0[idx0.hour==times[2]],idx0[idx0.hour==times[2]]],
+                      [temp.values.min(),temp.values.max()], color='red', linestyle=':')
+        if times[3] is not None:
+            axs.plot([idx0[idx0.hour==times[3]],idx0[idx0.hour==times[3]]],
+                      [temp.values.min(),temp.values.max()], color='orange', linestyle=':')
         if temp.values.min() < 0 and temp.values.max() > 0:
             axs.plot([idx0[0],idx0[-1]],[0,0], color='black', linestyle=':')
-    if title: axs.set_title(title)
-    if ylabel: axs.set_ylabel(ylabel)
-    if legend: axs.legend(legend, loc=loc)
-    
-    
+    if title:
+        axs.set_title(title)
+    if ylabel:
+        axs.set_ylabel(ylabel)
+    if legend:
+        axs.legend(legend, loc=loc)
+
 def constructNodeInput(inputDf, colParam, nodeColName):
     '''
-    
-
     Parameters
     ----------
     inputDf : pandas df
@@ -280,19 +280,17 @@ def constructNodeInput(inputDf, colParam, nodeColName):
     Returns
     -------
     inputDf: pandas df with new node input defined and appended to existing df
-
     '''
-    
+
     if colParam is None:
         # if colParam is set to None in input, default pv profile to 0
         inputDf[nodeColName] = 0
-    elif type(colParam) is str:
+    elif isinstance(colParam, str):
         # if single colParam (i.e. str) is provided, set directly as column
         inputDf[nodeColName] = inputDf[colParam]
-    elif type(colParam) is list:
+    elif isinstance(colParam, list):
         # if multiple colParam (i.e. list) vals are provided provided, sum, then set as col
         inputDf[nodeColName] = inputDf[colParam].sum(axis=1)
-        
     return inputDf
 
 def mapExternalGen(parameter, data, model):
@@ -314,54 +312,37 @@ def mapExternalGen(parameter, data, model):
     Returns
     -------
     ext_power_dict - dict indexed by (ts, node) with power profile
-
     '''
-    
+
     # check if external_gen flag is present in param
     if 'external_gen' not in parameter['system'].keys():
         logging.info('external generation flag not found. default to 0.')
         return 0
-    
+
     # check if external_gen flag is enabled
     if not parameter['system']['external_gen']:
         return 0
-    
+
     # if not multinode, look for column 'external_gen' in ts-data
     if not model.multiNode:
-        
         # convert load and pv ts-data into dicts with single-node name as second index
         singleNodeLabel = model.nodes.ordered_data()[0]
         ext_power_dict = add_second_index(pandas_to_dict(data['external_gen']), singleNodeLabel)
-        
-        return ext_power_dict
-    
     else:
-        
         # initilize list of new node-based inputs columns in ts df
         exGenNodeList = []
-        
+
         for nn, node in enumerate(parameter['network']['nodes']):
-            
             # Construct LOAD inputs
-            
             # create new column for aggregate pv for each node
             genColName = f'external_gen_{node["node_id"]}'
-            
             # check if 'load_id' in node inputs
             if 'external_gen' not in node['ders'].keys():
                 # if load_id is not provided in input, default profile to 0
                 data[genColName] = 0
             else:
                 data = constructNodeInput(data, node['ders']['external_gen'], genColName)
-                
-            exGenNodeList.append(genColName)  
-            
+            exGenNodeList.append(genColName)
         # convert df cols to dict
         ext_power_dict = pandas_to_dict(data[exGenNodeList],  columns=model.nodes)
-        
-        return ext_power_dict
-    
-    
-        
-        
-    
+    return ext_power_dict
