@@ -14,8 +14,10 @@ import os
 import sys
 import logging
 import platform
-import pandas as pd
+import subprocess as sp
 import numpy as np
+import pandas as pd
+from packaging import version
 
 def fix_bug_pyomo():
     """Fix bug in pyomo when intializing solver (timeout after 5s)"""
@@ -48,6 +50,22 @@ def get_root(f=None):
     except:
         root = os.getcwd()
     return root
+
+def download_cbc(cbc_version='2.10.8', root=get_root()):
+    """helper function to download cbc solver"""
+    cbc_repo = 'https://github.com/coin-or/Cbc/releases/download/releases%2F'
+    if version.parse(cbc_version) < version.parse('2.10.9'):
+        fname = f'Cbc-releases.{cbc_version}-x86_64-ubuntu18-gcc750-static.tar.gz'
+    else:
+        fname = f'Cbc-releases.{cbc_version}-x86_64-ubuntu20-gcc940-static.tar.gz'
+    cmd = 'rm -rf tmp_solvers && mkdir tmp_solvers && cd tmp_solvers'
+    cmd += f'&& wget -q {cbc_repo}{cbc_version}/{fname}'
+    cmd += f' && tar -xvzf {fname}'
+    cmd += f' && rm {fname}'
+    cmd += f' && mv bin/cbc ../cbc_{cbc_version}'
+    cmd += ' && cd .. && rm -rf tmp_solvers'
+    sp.check_output(cmd, shell=True, cwd=root)
+    return f'cbc_{cbc_version}'
 
 def pandas_to_dict(df, columns=None, convertTs=False):
     '''
