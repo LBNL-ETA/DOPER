@@ -1,13 +1,25 @@
-#!/usr/bin/env python
+# Distributed Optimal and Predictive Energy Resources (DOPER) Copyright (c) 2019
+# The Regents of the University of California, through Lawrence Berkeley
+# National Laboratory (subject to receipt of any required approvals
+# from the U.S. Dept. of Energy). All rights reserved.
 
+""""Distributed Optimal and Predictive Energy Resources
+Example test module.
+"""
+
+# pylint: disable=duplicate-code,line-too-long, redefined-outer-name, invalid-name
+# pylint: disable=dangerous-default-value, using-constant-test, consider-using-f-string
+# pylint: disable=undefined-variable, unused-argument
+
+import os
+import math
 import numpy as np
 import pandas as pd
-import math
-import os
 
 # Example data to test the controller
 
 def default_parameter():
+    """default parameter"""
     parameter = {}
     parameter['system'] = {
         'pv': True,
@@ -35,7 +47,7 @@ def default_parameter():
             'conversion': 35.75, # kWh/gal  
             'co2': 10.18, # kg/gal 
             'reserves': 100 # gal  
-        }    
+        }
     ]
     parameter['tariff'] = {}
     if False:
@@ -48,7 +60,7 @@ def default_parameter():
         parameter['tariff']['demand'] = {0:0, 1:5.40, 2:19.65} # $/kW for periods 0-offpeak, 1-midpeak, 2-onpeak
         parameter['tariff']['demand_coincident'] = 17.74 # $/kW for coincident
         parameter['tariff']['export'] = {0:0.01} # $/kWh for periods 0-offpeak, 1-midpeak, 2-onpeak
-    
+
     parameter['site'] = {}
     parameter['site']['customer'] = 'Commercial' # Type of customer [commercial or none]; decides if demand charge
     parameter['site']['regulation'] = False # Enables or disables the regulation bidding
@@ -65,12 +77,12 @@ def default_parameter():
     parameter['site']['demand_periods_prev'] = {0:0,1:0,2:0} # kW peak previously set for periods 0-offpeak, 1-midpeak, 2-onpeak
     parameter['site']['demand_coincident_prev'] = 0 # kW peak previously set for coincident
     parameter['site']['input_timezone'] = -8 # Timezone of inputs (in hourly offset from UTC)
-    parameter['site']['local_timezone'] = 'America/Los_Angeles' # Local timezone of tariff (as Python timezone string)   
+    parameter['site']['local_timezone'] = 'America/Los_Angeles' # Local timezone of tariff (as Python timezone string)
     parameter['controller'] = {}
     parameter['controller']['timestep'] = 60*60 # Controller timestep in seconds
-    parameter['controller']['horizon'] = 24*60*60 # Controller horizon in seconds  
+    parameter['controller']['horizon'] = 24*60*60 # Controller horizon in seconds
     parameter['controller']['solver_dir'] = 'solvers' # Controller solver directory
-      
+
     parameter['objective'] = {}
     parameter['objective']['weight_energy'] = 1 # Weight of tariff (energy) cost in objective
     parameter['objective']['weight_fuel'] = 1 # Weight of fuel (energy) cost in objective
@@ -78,20 +90,20 @@ def default_parameter():
     parameter['objective']['weight_export'] = 1 # Weight of revenue (export) in objective
     parameter['objective']['weight_regulation'] = 1 # Weight of revenue (regulation) in objective
     parameter['objective']['weight_degradation'] = 1 # Weight of battery degradation cost in objective
-    
+
     parameter['objective']['weight_co2'] = 0 # Weight of co2 emissions (kg) cost in objective
     parameter['objective']['weight_load_shed'] = 1 # Weight of shed load costs ($/kWh)  in objective
     return parameter
 
-
 def example_parameter_add_battery(parameter=None):
+    """example_parameter_add_battery"""
     if parameter is None:
         # if no parameter given, load default
         parameter = default_parameter()
-    
+
     # enable gensets
     parameter['system']['battery'] = True
-    
+
     # Add genset options
     parameter['batteries'] = [
         {
@@ -114,18 +126,18 @@ def example_parameter_add_battery(parameter=None):
          'thermal_R': 0.01
         }
     ]
-    
+
     return parameter
 
-
 def example_parameter_add_genset(parameter=None):
+    """example_parameter_add_genset"""
     if parameter is None:
         # if no parameter given, load default
         parameter = default_parameter()
-    
+
     # enable gensets
     parameter['system']['genset'] = True
-    
+
     # Add genset options
     parameter['gensets'] = [
         {
@@ -151,21 +163,21 @@ def example_parameter_add_genset(parameter=None):
             'timeToStart': 1,
             'regulation': False,
             'name': 'genset_2'
-        } 
+        }
     ]
-
     return parameter
 
 def example_parameter_add_loadcontrol(parameter=None):
+    """example_parameter_add_loadcontrol"""
     if parameter is None:
         # if no parameter given, load default
         parameter = default_parameter()
-    
+
     # enable gensets
     parameter['system']['load_control'] = True
-    
+
     # Add genset options
-    parameter['load_control'] = [        
+    parameter['load_control'] = [
         {
             'name': 'a',
             'sheddable': False
@@ -181,20 +193,19 @@ def example_parameter_add_loadcontrol(parameter=None):
             'sheddable': True,
             'cost': 0.3, # $/kWh not served
             'outageOnly': True
-        } 
+        }
     ]
-
     return parameter
 
-
 def example_parameter_add_evfleet(parameter=None):
+    """example_parameter_add_evfleet"""
     if parameter is None:
         # if no parameter given, load default
         parameter = default_parameter()
-    
+
     # enable gensets
     parameter['system']['battery'] = True
-    
+
     # Add genset options
     parameter['batteries'] = [
         {
@@ -234,24 +245,22 @@ def example_parameter_add_evfleet(parameter=None):
          'soc_min': 0
         }
     ]
-
     return parameter
 
-
 # Multi-Node Example Input Creation Funcs
-
 def example_parameter_add_network(parameter=None):
+    """example_parameter_add_network"""
     if parameter is None:
         # if no parameter given, load default
         parameter = default_parameter()
-    
+
     # Add nodes and line options
     parameter['network'] = {}
-    
+
     parameter['network']['settings'] = {
         'simpleNetworkLosses': 0.05   
     }
-    
+
     parameter['network']['nodes'] = [ # list of dict to define inputs for each node in network
         { # node 1
             'node_id': 'Node1PCC', # unique str to id node
@@ -330,7 +339,7 @@ def example_parameter_add_network(parameter=None):
             ]
         }
     ]
-    
+
     parameter['network']['lines'] = [ # list of dicts define each cable/line properties
         {
             'line_id': 'line_01', # str unique id for line
@@ -360,18 +369,17 @@ def example_parameter_add_network(parameter=None):
             'ampacity': 0,
         }
     ]
-
     return parameter
 
-
 def example_parameter_add_battery_multinode(parameter=None):
+    """example_parameter_add_battery_multinode"""
     if parameter is None:
         # if no parameter given, load default
         parameter = default_parameter()
-    
+
     # enable gensets
     parameter['system']['battery'] = True
-    
+
     # Add genset options
     parameter['batteries'] = [
         {
@@ -470,18 +478,17 @@ def example_parameter_add_battery_multinode(parameter=None):
              'thermal_R': 0.01
         },
     ]
-
     return parameter
 
-
 def example_parameter_add_genset_multinode(parameter=None):
+    """example_parameter_add_genset_multinode"""
     if parameter is None:
         # if no parameter given, load default
         parameter = default_parameter()
-    
+
     # enable gensets
     parameter['system']['genset'] = True
-    
+
     # Add genset options
     parameter['gensets'] = [
         {
@@ -533,16 +540,16 @@ def example_parameter_add_genset_multinode(parameter=None):
             'name': 'genset_1'
         },
     ]
-
     return parameter
 
-
 # Timeseries Input Example Creation Funcs
-    
-
 def example_inputs(parameter={}, load='Flexlab', scale_load=4, scale_pv=4):
+    """example_inputs"""
+
+    root_dir = None # check
+
     #scale = 1
-    #scale = 30 
+    #scale = 30
     if load == 'Flexlab':
         data = pd.read_csv(os.path.join(root_dir, 'ExampleData', 'Flexlab.csv'))
         data.index = pd.to_datetime(data['Date/Time'].apply(lambda x: '2018/'+x[1:6]+' '+'{:2d}'.format(int(x[8:10])-1)+x[10::]))
@@ -554,7 +561,6 @@ def example_inputs(parameter={}, load='Flexlab', scale_load=4, scale_pv=4):
         # Use only 1 day
         data = data.iloc[0:24]
         data['load_demand'] = data['load_demand']/data['load_demand'].max()
-        pass
     elif load =='B90':
         data = pd.DataFrame(index=pd.date_range(start='2019-01-01 00:00', end='2019-01-01 23:00', freq='H'))
         data['load_demand'] = [2.8,  2.8,  2.9,  2.9,  3. ,  3.3,  4. ,  4.8,  4.9,  5.1,  5.3,
@@ -577,7 +583,6 @@ def example_inputs(parameter={}, load='Flexlab', scale_load=4, scale_pv=4):
     data['tariff_regup'] = data['tariff_power_map'] * 0.05 + 0.01
     data['tariff_regdn'] = data['tariff_power_map'] * 0.01 + 0.01
     data['battery_reg'] = 0
-    
     data['date_time'] = data.index
     # Resample
     if True:
@@ -592,21 +597,18 @@ def example_inputs(parameter={}, load='Flexlab', scale_load=4, scale_pv=4):
         data = data.loc['2019-01-01 00:00:00':'2019-01-02 00:00:00']
     #data.index = data.index.astype(int)/1000000000
     #data = data.reset_index(drop=True)
-    
+
     # input timeseries indicating grid availability
     data['grid_available'] = 1
     data['fuel_available'] = 1
-    
+
     # input timeseries indicating grid availability
     data['grid_co2_intensity'] = 0.202 #kg/kWh
     return data
-    
-    return data
 
 def example_inputs_ev_schedule(parameter, data):
-    
+    """example_inputs_ev_schedule"""
     # add randome schedules for battery availability and external load
-    
     for b in range(len(parameter['batteries'])):
         np.random.seed(b)
         data['battery_{!s}_avail'.format(b)] = np.random.choice(2, len(data.index), p=[0.25, 0.75])
@@ -615,33 +617,31 @@ def example_inputs_ev_schedule(parameter, data):
                                                 * np.random.uniform(low=0.5, high=2.5, size=len(data.index))
     return data
 
-    
 def example_inputs_offgrid(parameter):
+    """example_inputs_offgrid"""
     # load default data
     data = example_inputs(parameter, load='B90', scale_load=150, scale_pv=100)
     # overwrite grid availability to disable grid connection
     data['grid_available'] = 0
-    
     return data
 
-
 def example_inputs_planned_outage(parameter, data=None):
+    """example_inputs_planned_outage"""
     if data is None:
         # load default data
         data = example_inputs(parameter, load='B90', scale_load=150, scale_pv=100)
-    
+
     # determine number of rows
     nrows = data.shape[0]
     # start outage in middle (integer)
     outageRow = nrows//2
-    
+
     # overwrite grid availability to disable grid connection
     for ii in range(nrows):
         if ii > outageRow:
             data.at[data.index[ii], 'grid_available'] = 0
-    
-    return data
 
+    return data
 
 def example_inputs_variable_co2(parameter, data=None, scaling=[1,2,1]):
     '''
@@ -669,96 +669,86 @@ def example_inputs_variable_co2(parameter, data=None, scaling=[1,2,1]):
         data = example_inputs(parameter, load='B90', scale_load=150, scale_pv=100)
     else:
         data = data.copy(deep=True)
-    
+
     # determine number of rows
     nrows = data.shape[0]
 
     # define base co2 intesity
     baseCo2 = 0.202
-    
+
     # determine number of scaling factors
     nScale = len(scaling)
-    
-    
+
     # overwrite grid availability to disable grid connection
     for ii in range(nrows):
-        
         # determine which index to use for scaling
         scaleIndex = math.floor(ii/nrows*nScale)
         # print(f'for ts: {ii} or {nrows}, use scale index: {scaleIndex}')
-        
+
         # apply the scaling factor
         data.at[data.index[ii], 'grid_co2_intensity'] = baseCo2 * scaling[scaleIndex]
-    
+
     return data
 
-
 def example_inputs_fueloutage(parameter, data=None):
+    """example_inputs_fueloutage"""
     if data is None:
         # load default data
         data = example_inputs(parameter, load='B90', scale_load=150, scale_pv=100)
-    
+
     # determine number of rows
     nrows = data.shape[0]
     # start outage in middle (integer)
     outageRow = nrows//2
-    
+
     # overwrite grid availability to disable grid connection
     for ii in range(nrows):
         if ii > outageRow:
             data.at[data.index[ii], 'fuel_available'] = 0
-    
+
     return data
 
-
 def example_inputs_load_shed(parameter, data=None):
+    """example_inputs_load_shed"""
     if data is None:
         # load default data
         data = example_inputs(parameter, load='B90', scale_load=150, scale_pv=100)
-        
+
     # overwrite grid availability to disable grid connection
     data['load_circuit_a'] = 0.55 * data['load_demand']
     data['load_circuit_b'] = 0.3 * data['load_demand']
     data['load_circuit_c'] = 0.15 * data['load_demand']
-    
     del data['load_demand']
-    
     return data
-
 
 def example_inputs_multinode(parameter, data=None):
     '''
-    
-
     func to create example 4-node load and pv profiles
-
     '''
-    
-    
+
     # create data ts for each node
     data1 = example_inputs(parameter, load='B90', scale_load=400, scale_pv=0)
     data2 = example_inputs(parameter, load='B90', scale_load=150, scale_pv=100)
     data3 = example_inputs(parameter, load='B90', scale_load=150, scale_pv=0)
     data4 = example_inputs(parameter, load='B90', scale_load=80, scale_pv=300)
-    
+
     # use data1 as starting point for multinode df
     data = data1.copy()
-    
+
     # drop load and pv from multinode df
     data = data.drop('load_demand', 1)
     data = data.drop('generation_pv', 1)
-    
+
     # add node specifc load and pv (where applicable)
     data['load_demand_1'] = data1['load_demand']
     data['load_demand_2'] = data2['load_demand']
     data['load_demand_3'] = data3['load_demand']
     data['load_demand_4'] = data4['load_demand']
-    
-    data['generation_pv_2'] = data2['generation_pv']
-    data['generation_pv_4'] = data4['generation_pv']  
-    
-    return data
 
+    data['generation_pv_2'] = data2['generation_pv']
+    data['generation_pv_4'] = data4['generation_pv']
+
+    return data
 
 if __name__ == '__main__':
     #parameter = default_parameter()
@@ -766,5 +756,3 @@ if __name__ == '__main__':
 
     #data = example_inputs(parameter)
     data = example_inputs_evfleet2(parameter)
-    
-    # print(data.index)
