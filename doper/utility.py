@@ -30,8 +30,11 @@ def fix_bug_pyomo():
             pyomo_asl = f.read()
         if '[solver_exec, "-v"]' in pyomo_asl:
             pyomo_asl = pyomo_asl.replace('[solver_exec, "-v"]', '[solver_exec, "-v", "exit"]')
-            with open(path_pyomo_asl, 'w', encoding='utf8') as f:
-                f.write(pyomo_asl)
+            try: 
+                with open(path_pyomo_asl, 'w', encoding='utf8') as f:
+                    f.write(pyomo_asl)
+            except Exception as e:
+                print(f'WARNING: pyomo solver bug was not fixed by doper due to: {e}')
         elif '[solver_exec, "-v", "exit"]' in pyomo_asl:
             pass
         else:
