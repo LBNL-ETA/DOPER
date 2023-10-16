@@ -158,6 +158,13 @@ def get_solver(solver, solver_dir=os.path.join(get_root(), 'solvers')):
     if system == 'Windows':
         return os.path.join(solver_dir, 'Windows'+bit, solver+'.exe')
     return os.path.join(solver_dir, 'Linux'+bit, solver)
+    
+def check_solver(solver='cbc'):
+    sol = get_solver(solver)
+    if not os.path.exists(sol):
+        logging.warning(f'The default "cbc" solver was not properly installed at "{sol}". ' \
+                        + 'Need to manually set the "solver_path" and "solver_name" ' \
+                        + 'when calling DOPER')
 
 def extract_properties(parameter, tech_name, prop_name, set_list=None):
     '''

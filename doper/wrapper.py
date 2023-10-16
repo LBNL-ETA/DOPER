@@ -19,9 +19,14 @@ from time import time
 import pandas as pd
 import pyutilib.subprocess.GlobalData
 
+from .utility import fix_bug_pyomo, check_solver, pyomo_read_parameter
+
 # Fix bug in pyomo when intializing solver (timeout after 5s)
-from .utility import fix_bug_pyomo, pyomo_read_parameter
 fix_bug_pyomo()
+
+# Check if solver was properly installed
+check_solver()
+
 from pyomo.opt import SolverFactory, TerminationCondition
 from .models.basemodel import default_output_list, generate_summary_metrics
 
