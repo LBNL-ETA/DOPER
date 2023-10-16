@@ -70,7 +70,7 @@ class DOPER:
         self.parameter = copy.deepcopy(parameter)
         self.solver_path = solver_path
         if solver_name is None:
-            solver_name = os.path.split(solver_path)[-1]
+            solver_name = os.path.split(solver_path)[-1].split('.')[0]
         self.solver_name = solver_name
         self.output_list = output_list
         self.singnal_handle = singnal_handle
