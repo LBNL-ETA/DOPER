@@ -25,7 +25,7 @@ def get_root(f=None):
     return root
 root = get_root()
 
-from ..utility import pandas_to_dict, add_second_index, pyomo_read_parameter, plot_streams, get_root, constructNodeInput, mapExternalGen
+from ..utility import pandas_to_dict, unpack_ts_input, add_second_index, pyomo_read_parameter, plot_streams, get_root, constructNodeInput, mapExternalGen
 
 
 
@@ -84,73 +84,49 @@ def base_model(inputs, parameter):
             model.simplePX = False
     
     # Parameter
-    model.outside_temperature = Param(model.ts, initialize=pandas_to_dict(inputs['oat']), \
-                                      doc='outside air temperature [C]')
     model.tariff_energy = Param(model.periods, initialize=parameter['tariff']['energy'], \
                                 doc='energy tariff [$/kWh]')
-    model.tariff_energy_map = Param(model.ts, initialize=pandas_to_dict(inputs['tariff_energy_map']), \
-                                    doc='energy period map [periods]') 
     model.tariff_power = Param(model.periods, initialize=parameter['tariff']['demand'], \
-                               doc='power tariff [$/kW]')
-    model.tariff_power_map = Param(model.ts, initialize=pandas_to_dict(inputs['tariff_power_map']), \
-                                   doc='power period map [periods]') 
+                               doc='power tariff [$/kW]') 
     model.tariff_energy_export = Param(model.periods, initialize=parameter['tariff']['export'], \
                                        doc='export tariff [$/kWh]')
-    model.tariff_energy_export_map = Param(model.ts, initialize=pandas_to_dict(inputs['tariff_energy_export_map']), \
-                                           doc='export period map [periods]')
-    model.tariff_regulation_up = Param(model.ts, initialize=pandas_to_dict(inputs['tariff_regup']), \
-                                       doc='regulation up price [$/kWh]')
-    model.tariff_regulation_dn = Param(model.ts, initialize=pandas_to_dict(inputs['tariff_regdn']), \
-                                       doc='regulation dn price [$/kWh]')
     model.demand_periods_preset = Param(model.periods, initialize=parameter['site']['demand_periods_prev'], \
                                         doc='preset demand [kW]')
     model.pv_max_s = Param(model.nodes, initialize=0, mutable=True, \
-                                doc='pv inv max apparent power [kVA]')
-        
-    # load grid availability. if not present in timeseries data, assume it's always available
-    if 'grid_available' in inputs.columns: 
-        model.grid_available = Param(model.ts, initialize=pandas_to_dict(inputs['grid_available']), \
+                            doc='pv inv max apparent power [kVA]')
+
+
+    # Unpack time-series inputs
+    model.tariff_energy_map = Param(model.ts, initialize=unpack_ts_input(inputs,'tariff_energy_map'), \
+                                    doc='energy period map [periods]') 
+    model.tariff_power_map = Param(model.ts, initialize=unpack_ts_input(inputs,'tariff_power_map'), \
+                                   doc='power period map [periods]') 
+    model.tariff_energy_export_map = Param(model.ts, initialize=unpack_ts_input(inputs,'tariff_energy_export_map'), \
+                                           doc='export period map [periods]')
+    model.tariff_regulation_up = Param(model.ts, initialize=unpack_ts_input(inputs,'tariff_regup'), \
+                                       doc='regulation up price [$/kWh]')
+    model.tariff_regulation_dn = Param(model.ts, initialize=unpack_ts_input(inputs,'tariff_regdn'), \
+                                       doc='regulation dn price [$/kWh]')
+
+   
+    # optional time-series inputs
+    model.outside_temperature = Param(model.ts, initialize=unpack_ts_input(inputs, 'oat', 20), \
+                                      doc='outside air temperature [C]')
+    model.grid_available = Param(model.ts, initialize=unpack_ts_input(inputs,'grid_available', 1), \
                          doc='grid available [bool]')
-            
-    else:
-        model.grid_available = Param(model.ts, initialize=1, \
-                             doc='grid available [bool]')
-        logging.info('grid availability missing from input. Default value = 1')
-        
-    # load fuel availability. if not present in timeseries data, assume it's always available
-    if 'fuel_available' in inputs.columns:
-        model.fuel_available = Param(model.ts, initialize=pandas_to_dict(inputs['fuel_available']), \
+    model.fuel_available = Param(model.ts, initialize=unpack_ts_input(inputs,'fuel_available', 1), \
                              doc='fuel import available [bool]')
-    else:
-        model.fuel_available = Param(model.ts, initialize=1, \
-                             doc='fuel import available [bool]')
-        logging.info('fuel availability missing from input. Default value = 1')
-        
-    if 'grid_co2_intensity' in inputs.columns:
-        model.grid_co2_intensity = Param(model.ts, initialize=pandas_to_dict(inputs['grid_co2_intensity']), \
+    model.grid_co2_intensity = Param(model.ts, initialize=unpack_ts_input(inputs,'grid_co2_intensity',0), \
                          doc='grid CO2 intensity [kg/kWh]')
-    else:
-        model.grid_co2_intensity = Param(model.ts, initialize=0, \
-                         doc='grid CO2 intensity [kg/kWh]')
-        logging.info('grid CO2 missing from input. Default value = 0')
-        
-    if 'utility_rtp' in inputs.columns:
-        model.utility_rtp = Param(model.ts, initialize=pandas_to_dict(inputs['utility_rtp']), \
+    model.utility_rtp = Param(model.ts, initialize=unpack_ts_input(inputs,'utility_rtp',0), \
                          doc='utility real time price [$/kWh]')
-    else:
-        model.utility_rtp = Param(model.ts, initialize=0, \
-                         doc='utility real time price - Disabled [$/kWh')
-        logging.info('utility real-time price missing from input. Default value = 0')
-        
-    if 'utility_rtp_export' in inputs.columns:
-        model.utility_rtp_export = Param(model.ts, initialize=pandas_to_dict(inputs['utility_rtp_export']), \
+
+    # if 'utility_rtp' is in inputs, and 'utility_rtp_export' is not, duplicate 'utility_rtp' to 'utility_rtp_export'
+    if ('utility_rtp' in inputs.columns) and ('utility_rtp_export' not in inputs.columns):
+        inputs['utility_rtp_export'] = inputs['utility_rtp']
+
+    model.utility_rtp_export = Param(model.ts, initialize=unpack_ts_input(inputs,'utility_rtp_export',0), \
                          doc='utility real time export price [$/kWh]')
-    elif 'utility_rtp' in inputs.columns:
-        model.utility_rtp_export = Param(model.ts, initialize=pandas_to_dict(inputs['utility_rtp']), \
-                         doc='utility real time export price [$/kWh]')
-    else:
-        model.utility_rtp_export = Param(model.ts, initialize=0, \
-                         doc='utility real time export price - Disabled [$/kWh')
      
         
     # map load profile & pv generation profiles to nodes
