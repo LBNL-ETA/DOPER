@@ -103,12 +103,13 @@ def pandas_to_dict(df, columns=None, convertTs=False):
     return d
 
 
-def unpack_ts_input(inputs, colName, default=None):
+def unpack_ts_input(inputs, colName, default=None, required=True):
     '''
     function attempts to unpack timeseries inputs using:
-    inputs - timeseries input dataframe
-    colName - name of column in inputs to extract (may not exist)
-    default - value to use for input if colName is not found in inputs
+    inputs - timeseries input dataframe.
+    colName - name of column in inputs to extract (may not exist).
+    default - value to use for input if colName is not found in inputs.
+    required - flag if input is required.
 
     returns dict that can be used as Pyomo param initialize argument
     '''                       
@@ -118,7 +119,8 @@ def unpack_ts_input(inputs, colName, default=None):
         return pandas_to_dict(inputs[colName])
     # otherwise return default, if provided        
     elif default is not None:
-        logging.info(f'{colName} missing from input. Default value = {default}')
+        if required:
+            logging.info(f'{colName} missing from input. Default value = {default}')
         return default
     # otherwise, raise error (required input is missing)
     else:

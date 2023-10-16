@@ -110,7 +110,7 @@ def base_model(inputs, parameter):
 
    
     # optional time-series inputs
-    model.outside_temperature = Param(model.ts, initialize=unpack_ts_input(inputs, 'oat', 20), \
+    model.outside_temperature = Param(model.ts, initialize=unpack_ts_input(inputs, 'oat', 20, False), \
                                       doc='outside air temperature [C]')
     model.grid_available = Param(model.ts, initialize=unpack_ts_input(inputs,'grid_available', 1), \
                          doc='grid available [bool]')
