@@ -164,7 +164,7 @@ def check_solver(solver='cbc'):
     if not os.path.exists(sol):
         logging.warning(f'The default "cbc" solver was not properly installed at "{sol}". ' \
                         + 'Need to manually set the "solver_path" and "solver_name" ' \
-                        + 'when calling DOPER')
+                        + 'when calling DOPER.')
 
 def extract_properties(parameter, tech_name, prop_name, set_list=None):
     '''

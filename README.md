@@ -18,11 +18,11 @@ Peak demand and total energy cost was significantly reduced. Annual simulations 
 Further information can be found in the full project report listed in the [Cite](https://github.com/LBNL-ETA/DOPER#cite) section.
 
 ## Getting Started
-The following link permits users to clone the source directory containing the [DOPER](https://github.com/LBNL-ETA/DOPER) package.
+The following link permits users to clone the source directory containing the [DOPER](https://github.com/LBNL-ETA/DOPER) package and then locally install with the `pip install .` command.
 
-The package can be installed with the `pip install .` command.
+Alternatively, DOPER can be directly installed with `pip install git+https://github.com/LBNL-ETA/DOPER`.
 
-Note that on Linux-based systems the [CBC](https://github.com/coin-or/Cbc) solver will be installed automatically. On Windows or other OS please install the desired solver manually. For example, to install CBC on Windows download the binaries for the latest release [here](https://github.com/coin-or/Cbc/releases), and point the `solver_path` argument to the `bin/cbc.exe` location on your system.
+Note that the [CBC](https://github.com/coin-or/Cbc) solver will be automatically installed and set as default solver for Linux and Windows systems. On MacOS please install the desired solver manually. For CBC please follow the installation instructions [here](https://github.com/coin-or/Cbc#binaries), and point the `solver_path` argument of DOPER to the `cbc` executable on your system.
 
 ## Use
 
