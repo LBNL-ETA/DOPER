@@ -95,6 +95,8 @@ The time-series input should be in the form of a pandas dataframe, indexed by ti
 * `tariff_energy_map`: mapping of time-period to tariff TOU period
 * `tariff_power_map`: mapping of time-period to tariff TOU power demand period
 * `tariff_energy_export_map`: mapping of time-period to energy export price
+* `utility_rtp`: real-time price utility rate [$/kWh] (optional, default = 0)
+* `utility_rtp_export`: real-time price export rate [$/kWh] (optional, default = utility_rtp)
 * `grid_available`: binary indicating whether grid connection is available
 * `fuel_available`: binary indicating whether fuel import is available
 * `grid_co2_intensity`: current CO2 intensity of grid imports [kg/kWh]

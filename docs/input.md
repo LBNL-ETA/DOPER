@@ -72,3 +72,17 @@ The following fields may be included if certain DER assets and features are to b
 * `battery_N_demand`: external discharging load for battery N [kW]. Optional input to model an EV as a battery. If missing, asset is treated as a stationary battery
 * `load_shed_potential_X`: volume of load sheddable under load control resource with the name field set to 'X' [kW]. If load control is enabled for a model, the corresponding load_shed_potential field must be included in the input data. Number of load control assets must match the number of shed potential profiles. Missing items will generate an error.
 * `external_gen`: generation available from generic external generation source [kW]. If `parameter['system']['external_gen']` is set to `True`, then this field must be included in the input data
+
+#### 3. Other Cases
+
+##### 3.1. Real-Time Price Tariff
+
+Users can generate a control model that utilizes a real-time (or time-variable) utility tariff by providing specific fields in the input data frame. The following fields can be used to do so:
+
+* `utility_rtp`: the utility price [$/kWh] of electricity imports. The default value of this field is 0, so if an RTP price profile is not defined, it will be neglected by the model.
+* `utility_rtp_export`: users may also define a separate RTP profile for export prices. If this input in not provided, export price will use the default value of `utility_rtp`.
+
+In order for RTP prices to be considered within the optimization, the following items must be included in the objective function of the model. Futhermore, any cost variables related to time-of-use (TOU) energy or demand charges should likely be omitted from the objective function to prevent double-counting of electricity costs.
+
+* `model.sum_rtp_cost`: this term includes the total costs of electricity import during the optimization horizon and should be scaled by `parameter['objective']['weight_rtp']`: the user-assigned weight to RTP energy costs.
+* `model.sum_rtp_export_revenuet`: this term includes the total revenuce of electricity import during the optimization horizon and should be subtracted from the total objective function. It should also be scaled by `parameter['objective']['weight_rtp']`: the user-assigned weight to RTP energy costs/revenues.
