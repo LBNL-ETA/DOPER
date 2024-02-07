@@ -208,7 +208,8 @@ class DOPER:
 
     def do_optimization(self, data, parameter=None, tee=False, keepfiles=False,
                         report_timing=False, options={}, print_error=True,
-                        other_valid_terminations=[TerminationCondition.maxTimeLimit]):
+                        other_valid_terminations=[TerminationCondition.maxTimeLimit],
+                        process_outputs=True):
         '''
             Integrated function to conduct the optimization for control purposes.
 
@@ -222,6 +223,7 @@ class DOPER:
                 options (dict): Options to be set for solver. (default={})
                 print_error (bool): Log error messages. (default=True)
                 other_valid_terminations (list): Valid Pyomo termination status to load solutions.
+                process_outputs (bool): Process the outputs from Pyomo. (default=True)
 
             Returns
             -------
@@ -256,13 +258,15 @@ class DOPER:
             except Exception as e:
                 if print_error:
                     logger.warning(f'Could not load solutions:\n{e}')
-            if termination in ([TerminationCondition.optimal] + other_valid_terminations):
+            if termination in ([TerminationCondition.optimal] + other_valid_terminations) \
+                and process_outputs:
                 objective = self.model.objective()
                 df = self.write_ts_results()
                 self.summary = generate_summary_metrics(self.model)
             else:
                 objective = None
                 df = pd.DataFrame()
+                self.summary = None
             # if self.pyomo_to_pandas and termination == TerminationCondition.optimal:
             #     df = self.pyomo_to_pandas(self.model, self.parameter)
             # else:
