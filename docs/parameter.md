@@ -66,32 +66,23 @@ The content of `parameter['objective']` is as follows:
 This dict contains various options related to the site data.
 
 The content of `parameter['site']` is as follows:
-- `cooling_efficiency`: [float] Electric efficiency of the cooling system. Default value is 0.29.
-- `cool_max`: [list] Maximum power of the cooling system, in Wth/m2.
-- `fstate_initial`: [int] Initial state of each window zone. Equals the parameter in [‘facade’].
-- `glare_diff`: [float]  Lower bound of glare penalty (glare_max - glare_diff). Default value is 0.1.
-- `glare_scale`: [float]  Scale of glare cost function (ATTENTION absolute value). Default value is 10.
-- `heating_efficiency`: [float] Electric efficiency of the heating system. Default value is 0.95.
-- `heat_max`: [list] Maximum power of the heating system, in Wth/m2.
-- `lighting_capacity`: [float] Maximum output of the lighting system, in lux. Default value is 1000.
-- `lighting_efficiency`: [float] Electric efficiency of the lighting system. Default value is 0.24.
-- `lighting_split`: [float]  Thermal split of electric lighting (1=rad, 0=conv). Default value is 0.5.
-- `occupancy_split`: [float]  Thermal split of occupants (1=rad, 0=conv). Default value is 1.
-- `param`: [dict] Parameters of the reduced order resistance capacitance (RC) model. 
-- `Ci`: [float] Thermal capacity of /interior/ node, in W.m-1K-1. Default value is 492790.131488945.
-- `Cs`: [float] Thermal capacity of /slab/ node, in W.m-1K-1. Default value is  3765860.3115474223.
-- `Ris`: [float] Thermal resistance between /interior/ and /slab/, in K.W-1. Default value is 0.023649372856050448. 
-- `Row1`: [float] Thermal resistance between /outdoor/ and /window outer layer/, in K.W-1.Default value is 0.0030454206460150783.
-- `Rw1w2`: [float] Thermal resistance between /window outer layer/ and /window inner layer/, in K.W-1. Default value is 0.14425660371050014.
-- `Rw2i`: [float] Thermal resistance between /window inner layer/ and /interior/, in K.W-1. Default value is 0.0002577364781085182.
-- `type`: [str] Name of the RC model. Options are: 'R2C2’,'R4C2’, 'R5C3’, 'R6C3’ and default is 'R4C2’.
-- `plugload_split`: [float]  Thermal split of plug loads (1=rad, 0=conv). Default value is 0.
-- `shg_split`: [float] All SHG on air (1=rad, 0=conv). Default value is 0.
-- `temps_initial`: [list] Initial value of the temperatures, in °C. Default value is [22.5, 22.5, 22.5]
-- `temps_name`: [list] Temperature zone names. Default value is ['room', 'slab'].
-- `tsol_split`: [float] All Tsol on surfaces (1=rad, 0=conv). Default value is 1.
-- `view_scale`: [float] Scale of view cost function (ATTENTION absolute value). Default value is 0.1.
 
+- `customer`: [str] Type of customer [commercial or none]; decides if demand charges.
+- `demand_coincident_prev`: [int] Peak previously set for coincident, in kW.
+- `demand_periods_prev`: [list] Peak previously set for periods 0-offpeak, 1-midpeak, 2-onpeak, in kW.
+- `export_max`: [int] Minimal import capacity, in kW.
+- `import_max`: [int] Maximal import capacity, in kW.
+- `input_timezone`: [float] Timezone of inputs, in hourly offset from UTC.
+- `local_timezone`: [str] Local timezone of tariff, in Python timezone string.
+- `regulation`: [bool] Enables or disables the regulation bidding.
+- `regulation_all`: [bool] All batteries must participate in regulation.
+- `regulation_min`: [int] Minimal regulation bid.
+- `regulation_reserved`: [bool] Flag to reserve site capacity for regulation.
+- `regulation_reserved_battery`: [bool] Flag to reserve battery capacity for regulation.
+- `regulation_symmetric`: [bool] Symmetric bidding into regulation market.
+- `regulation_reserved_variable_battery`: [bool] Flag to reserve battery capacity for regulation (variable ts).
+- `regulation_xor`: [bool] Only allows bids for regup or regdown per timestep.
+- `regulation_xor_building`: [bool] For each battery only allow regulation or building support.
 
 ---
 
