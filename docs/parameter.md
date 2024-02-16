@@ -67,7 +67,22 @@ This dict contains various options related to the site data.
 
 The content of `parameter['site']` is as follows:
 
-* NEED TO UPDATE
+- `customer`: [str] Type of customer [commercial or none]; decides if demand charges.
+- `demand_coincident_prev`: [int] Peak previously set for coincident, in kW.
+- `demand_periods_prev`: [list] Peak previously set for periods 0-offpeak, 1-midpeak, 2-onpeak, in kW.
+- `export_max`: [int] Minimal import capacity, in kW.
+- `import_max`: [int] Maximal import capacity, in kW.
+- `input_timezone`: [float] Timezone of inputs, in hourly offset from UTC.
+- `local_timezone`: [str] Local timezone of tariff, in Python timezone string.
+- `regulation`: [bool] Enables or disables the regulation bidding.
+- `regulation_all`: [bool] All batteries must participate in regulation.
+- `regulation_min`: [int] Minimal regulation bid.
+- `regulation_reserved`: [bool] Flag to reserve site capacity for regulation.
+- `regulation_reserved_battery`: [bool] Flag to reserve battery capacity for regulation.
+- `regulation_symmetric`: [bool] Symmetric bidding into regulation market.
+- `regulation_reserved_variable_battery`: [bool] Flag to reserve battery capacity for regulation (variable ts).
+- `regulation_xor`: [bool] Only allows bids for regup or regdown per timestep.
+- `regulation_xor_building`: [bool] For each battery only allow regulation or building support.
 
 ---
 
