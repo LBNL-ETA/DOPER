@@ -238,18 +238,18 @@ def resample_variable_ts(data, reduced_start=60, reduced_ts=30, cols_fill=[]):
     shift = 0
 
     data_temp = data.copy(deep=True)
-    data2 = data.loc[reduced_start_ix:].shift(shift).resample(f'{reduced_ts}T',
-        offset=f'{reduced_start}T').asfreq().copy(deep=True)
+    data2 = data.loc[reduced_start_ix:].shift(shift).resample(f'{reduced_ts}min',
+        offset=f'{reduced_start}min').asfreq().copy(deep=True)
 
     for c in data2.columns:
         if c in cols_fill:
             data2[c] = data.loc[reduced_start_ix-pd.DateOffset(minutes=reduced_ts):, c].shift( \
-                shift).resample(f'{reduced_ts}T',
-                                offset=f'{reduced_start}T').ffill()
+                shift).resample(f'{reduced_ts}min',
+                                offset=f'{reduced_start}min').ffill()
         else:
             data2[c] = data.loc[reduced_start_ix-pd.DateOffset(minutes=reduced_ts):, c].shift( \
-                shift).resample(f'{reduced_ts}T',
-                                offset=f'{reduced_start}T').mean()
+                shift).resample(f'{reduced_ts}min',
+                                offset=f'{reduced_start}min').mean()
 
     data = pd.concat([data.loc[:reduced_start_ix-pd.DateOffset(minutes=data_ts)],
                       data2.loc[reduced_start_ix:]],
