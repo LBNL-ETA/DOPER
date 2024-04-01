@@ -1,0 +1,18 @@
+Prerequisistes:
+
+Have twine (pip install twine)
+Make an account for PyPi website
+Be added to the project on PyPi
+
+Steps to updating DOPER Package:
+
+1. Change the version number in doper/__init__.py file.
+For more on the setup.py file, check out this link: https://packaging.python.org/tutorials/packaging-projects#configuring-metadata)
+
+2. In the bash shell, run "python setup.py sdist bdist_wheel" (this will create a build and dist folder which contains info on the packages that we will publish)
+
+3. In the bash shell, run "tar tzf dist/DOPER-[VERSION NUMBER HERE].tar.gz" to check the contents of the package. If it looks normal, proceed. Just make sure nothing is egrgiously wrong.
+
+4. In the bash shell, run "twine check dist/*" and make sure you pass the tests.
+
+5. Finally, run 'twine upload dist/*', fill out your username and password when prompted, and we are done!
