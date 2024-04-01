@@ -56,7 +56,9 @@ setuptools.setup(
                             'solvers/Linux64/*',
                             'solvers/Windows64/*',
                             'data/*',
-                            'examples/*']},
+                            'examples/*',
+                            'resources/*',
+                            'resources/pvlib/*']},
     include_package_data=True,
     python_requires=">=3.6",
     install_requires=install_requires

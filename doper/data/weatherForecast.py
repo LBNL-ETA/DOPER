@@ -27,7 +27,7 @@ warnings.filterwarnings('ignore', message="The HRRR class was deprecated in pvli
 
 try:
     root = os.path.dirname(os.path.abspath(__file__))
-    from .resources.pvlib.forecast import HRRR
+    from ..resources.pvlib.forecast import HRRR
 except:
     root = os.getcwd()
     sys.path.append(os.path.join(root, '..', 'doper'))
