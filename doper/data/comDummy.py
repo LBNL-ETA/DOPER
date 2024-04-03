@@ -1,4 +1,5 @@
 import time
+import json
 from fmlc.baseclasses import eFMU
 
 class communication_dummy(eFMU):
@@ -10,8 +11,11 @@ class communication_dummy(eFMU):
         st = time.time()
 
         self.output['output-data'] = {}
-        for k, v in self.input['config']:
-            self.output['output-data'][k] = v
+        config = json.loads(self.input['config'])
+        if isinstance(config, dict):
+            self.output['output-data'].update(config)
+        else:
+            self.output['output-data'] = config
 
         self.output['duration'] = time.time() - st
         return 'Done.'

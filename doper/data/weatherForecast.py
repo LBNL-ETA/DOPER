@@ -212,7 +212,7 @@ class weather_forecaster(eFMU):
         start_time = pd.to_datetime(now)
         
         # FIXME
-        start_time = start_time - dtm.timedelta(hours=1)
+        start_time = start_time - dtm.timedelta(hours=2)
         # print('WARNING: Time in local time:', now, 'NOAA is 1h behind (DST?)', start_time)
 
         final_time = start_time + pd.Timedelta(hours=self.config['horizon'])
@@ -309,7 +309,7 @@ class weather_forecaster(eFMU):
                     self.data = self.data[self.config['output_cols'].keys()]
 
                     # FIXME
-                    self.data = self.data.iloc[1:]
+                    self.data = self.data.iloc[2:]
                     # print('WARNING: Removing first timestep (last hour) due to NOAA 1h behind')
             except Exception as e:
                 self.msg += f'ERROR: {e}.\n\n{traceback.format_exc()}\n'
@@ -337,7 +337,7 @@ def get_default_config():
     config['lat'] = 37.8715
     config['lon'] = -122.2501
     config['tz'] = 'US/Pacific'
-    config['horizon'] = 16
+    config['horizon'] = 18
     config['tmp_dir'] = os.path.join(root, 'tmp')
     config['debug'] = False
     config['source'] = 'noaa_hrrr'
