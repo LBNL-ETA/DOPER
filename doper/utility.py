@@ -176,12 +176,13 @@ def pyomo_read_parameter(temp):
         d[k] = v
     return d
 
-def get_solver(solver, solver_dir=os.path.join(get_root(), 'solvers')):
+def get_solver(solver, solver_dir=None):
     '''
         Utility to return the solverpath readable for Pyomo.
     '''
     solver_path = None
     if not solver_dir:
+        solver_dir = os.path.join(get_root(), 'solvers')
         # first try locally
         solver_path = shutil.which(solver)
 
