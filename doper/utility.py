@@ -12,6 +12,7 @@ Utility module.
 
 import os
 import sys
+import shutil
 import logging
 import platform
 import subprocess as sp
@@ -179,12 +180,21 @@ def get_solver(solver, solver_dir=os.path.join(get_root(), 'solvers')):
     '''
         Utility to return the solverpath readable for Pyomo.
     '''
-    system = platform.system()
-    bit = '64' if sys.maxsize > 2**32 else '32'
-    if system == 'Windows':
-        return os.path.join(solver_dir, 'Windows'+bit, solver+'.exe')
-    return os.path.join(solver_dir, 'Linux'+bit, solver)
-    
+    solver_path = None
+    if not solver_dir:
+        # first try locally
+        solver_path = shutil.which(solver)
+
+    # otherwise try doper solvers
+    if not solver_path:
+        system = platform.system()
+        bit = '64' if sys.maxsize > 2**32 else '32'
+        if system == 'Windows':
+            solver_path = os.path.join(solver_dir, 'Windows'+bit, solver+'.exe')
+        solver_path = os.path.join(solver_dir, 'Linux'+bit, solver)
+
+    return solver_path
+
 def check_solver(solver='cbc'):
     sol = get_solver(solver)
     if not os.path.exists(sol):

@@ -2,5 +2,4 @@ numpy
 pandas
 pyomo>6.0
 matplotlib
-pyutilib
-pygrib
+fmlc
