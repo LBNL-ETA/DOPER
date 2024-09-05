@@ -154,6 +154,12 @@ def get_hrrr_forecast(lat, lon, dt, tz='America/Los_Angeles', max_hour=16,
         
             # determine nearest gridpoint
             r = get_nearest_data(lat, lon, fcObj)
+
+            # FIXME: deleting file manually due to pygrib 2.1.5 bug
+            try:
+                os.remove(fcObj)
+            except:
+                pass
         else:
             # no forecast received
             r = {}
@@ -346,7 +352,7 @@ def get_default_config():
     config['lon'] = -122.2501
     config['tz'] = 'US/Pacific'
     config['horizon'] = 16
-    config['tmp_dir'] = os.path.join(root, 'tmp')
+    config['tmp_dir'] = 'tmp'
     config['debug'] = False
     config['source'] = 'noaa_hrrr'
     config['json_return'] = True
