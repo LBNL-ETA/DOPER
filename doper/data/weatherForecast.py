@@ -157,7 +157,8 @@ def get_hrrr_forecast(lat, lon, dt, tz='America/Los_Angeles', max_hour=16,
 
             # FIXME: deleting file manually due to pygrib 2.1.5 bug
             try:
-                os.remove(fcObj)
+                if not debug:
+                    os.remove(fcObj)
             except:
                 pass
         else:
