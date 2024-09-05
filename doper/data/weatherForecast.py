@@ -108,27 +108,44 @@ def get_nearest_data(lat, lon, fname):
     return res
 
 def get_hrrr_forecast(lat, lon, dt, tz='America/Los_Angeles', max_hour=16,
-                      tmp_dir='', debug=False, store_file=False):
+                      tmp_dir='', debug=False, store_file=False, forecast_age=2):
+    """
+    Utility function to dowlnoad NOAA's HRRR forecast data.
+
+    Inputs
+    ------
+    lat (float): latitude of location.
+    lon (float): longitude of location.
+    dt (pd.Timestamp): current date time.
+    tz (str): time zone of location.
+    max_hour (int): forecast horizon.
+    tmp_dir (str): temporary directory for HRRR downloads.
+    debug (bool): debug flag.
+    store_file (bool): store HRRR downloads.
+    forecast_age (int): age of HRRR forecast, in hours. 
+    """
 
     # convert timestep to hourly
     dt = dt.replace(minute=0, second=0, microsecond=0, nanosecond=0).tz_localize(None)
 
+    # convert local time to utc
+    dt_utc = dt.tz_localize(tz).tz_convert('UTC').tz_localize(None)
+    # NOTE: use forecast from X hours ago since NOAA is usually behind
+    dt_utc = dt_utc - pd.DateOffset(hours=forecast_age)
+
     # bug in pygrib 2.1.5 does not allow object as input
     store_file = True
-    
-    res = {}
-    for h in range(max_hour+1):
-        st = time.time()
 
-        # convert local time to utc
-        dt_utc = dt.tz_localize(tz).tz_convert('UTC').tz_localize(None)
+    res = {}
+    for h in range(forecast_age, max_hour+forecast_age+1):
+        st = time.time()
 
         # get latest hrrr file
         fcObj = download_latest_hrrr(lat, lon, dt_utc, h,
                                      tmp_dir=tmp_dir,
                                      debug=debug,
                                      store_file=store_file)
-        
+
         if fcObj:
             # make readable (pygrib 2.1.5 should support but doesn't)
             if not store_file:
@@ -144,11 +161,11 @@ def get_hrrr_forecast(lat, lon, dt, tz='America/Los_Angeles', max_hour=16,
         r['duration'] = time.time()-st
 
         # add to output
-        res[h] = r
+        res[dt_utc+pd.DateOffset(hours=h)] = r
         
     # make dataframe
     res = pd.DataFrame(res).transpose()
-    res.index = [pd.to_datetime(dt)+pd.DateOffset(hours=ix) for ix in res.index]
+    res.index = pd.to_datetime(res.index).tz_localize('UTC').tz_convert(tz).tz_localize(None)
     
     return res
 
@@ -210,11 +227,6 @@ class weather_forecaster(eFMU):
             now = now.replace(minute=0, second=0, microsecond=0, nanosecond=0)
             now = now.tz_localize('UTC').tz_convert(tz)
         start_time = pd.to_datetime(now)
-        
-        # FIXME
-        start_time = start_time - dtm.timedelta(hours=2)
-        # print('WARNING: Time in local time:', now, 'NOAA is 1h behind (DST?)', start_time)
-
         final_time = start_time + pd.Timedelta(hours=self.config['horizon'])
         
         # get forecast
@@ -269,8 +281,8 @@ class weather_forecaster(eFMU):
             # check index
             if self.msg == '':
                 self.forecast.index = pd.to_datetime(self.forecast.index, format='%Y-%m-%d %H:%M:%S')
-                if not len(self.forecast) == self.config['horizon']+1:
-                    self.msg += f'ERROR: Forecast length {len(self.forecast)} is not horizon {self.config["horizon"]+1}.\n'
+                if not (len(self.forecast)-1) == self.config['horizon']:
+                    self.msg += f'ERROR: Forecast length {len(self.forecast)-1} is not horizon {self.config["horizon"]}.\n'
                 if not self.forecast.index[0] == start_time.tz_localize(None):
                     self.msg += f'ERROR: Forecast start "{self.forecast.index[0]}" not ' \
                         + f'start_time "{start_time.tz_localize(None)}".\n'
@@ -307,10 +319,6 @@ class weather_forecaster(eFMU):
                     self.data = self.data.loc[self.pvlib_fc.index[:-1]]
                     self.data.index = self.data.index.tz_localize(None)
                     self.data = self.data[self.config['output_cols'].keys()]
-
-                    # FIXME
-                    self.data = self.data.iloc[2:]
-                    # print('WARNING: Removing first timestep (last hour) due to NOAA 1h behind')
             except Exception as e:
                 self.msg += f'ERROR: {e}.\n\n{traceback.format_exc()}\n'
                 self.data = pd.DataFrame()
@@ -337,7 +345,7 @@ def get_default_config():
     config['lat'] = 37.8715
     config['lon'] = -122.2501
     config['tz'] = 'US/Pacific'
-    config['horizon'] = 18
+    config['horizon'] = 16
     config['tmp_dir'] = os.path.join(root, 'tmp')
     config['debug'] = False
     config['source'] = 'noaa_hrrr'
