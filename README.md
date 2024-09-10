@@ -137,7 +137,7 @@ Revenue [$]     0.0 (Export)        0.0 (Regulation)
 ```
 
 #### 5. Requesting Custom Timeseries Ouputs
-Once DOPER solves the given Pyomo model, it will generate a pandas dataframe of timeseries parameter and variable data as part of its ouput. By default, a standard list of timeseries data will be generated. However, if you  have specific instructions on which Pyomo values to pass to DOPER outputs, you can pass an optional argument `output_list` when declaring a new instance of DOPER.
+Once DOPER solves the given Pyomo model, it will generate a pandas dataframe of timeseries parameter and variable data as part of its ouput. By default, a standard list of timeseries data will be generated. However, if one has specific instructions on which Pyomo values to pass to DOPER outputs, an optional argument `output_list` can be passed when declaring a new instance of DOPER. It consists of a `data` label to identify the variable within the optimzaiton model, `df_label` to specify the output column name, and the optional `index` argument if additional indices (besides time) are required. In the example below it can be seen that the model includes multiple batteries, indexed by the variable `battery`. Note that the `df_label` needs to include the string formatter `%s` to pass the custom index, e.g., battery index, to the output dataframe.
 
 The optional argument is structured as a list of dictionaries structured, like the following:
 ```python
@@ -147,8 +147,9 @@ my_output_list = [
         'df_label': '{Label for your output column}'
     },
     {
-        'data': '{another var or param}',
-        'df_label': '{another label for your output column}'
+        'data': 'battery_charge_grid_power',
+        'df_label': 'Battery Charging Power (Battery %s) [kW]',
+		'index': 'batteries'
     } 
 ]
 ```
