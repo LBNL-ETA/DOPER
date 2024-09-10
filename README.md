@@ -149,7 +149,7 @@ my_output_list = [
     {
         'data': 'battery_charge_grid_power',
         'df_label': 'Battery Charging Power (Battery %s) [kW]',
-		'index': 'batteries'
+        'index': 'batteries'
     } 
 ]
 ```
