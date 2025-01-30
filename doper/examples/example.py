@@ -1329,7 +1329,7 @@ def ts_inputs(parameter={}, load='Flexlab', scale_load=4, scale_pv=4):
         data = data.iloc[0:24]
         data['load_demand'] = data['load_demand']/data['load_demand'].max()
     elif load =='B90':
-        data = pd.DataFrame(index=pd.date_range(start='2019-01-01 00:00', end='2019-01-01 23:00', freq='H'))
+        data = pd.DataFrame(index=pd.date_range(start='2019-01-01 00:00', end='2019-01-01 23:00', freq='h'))
         data['load_demand'] = [2.8,  2.8,  2.9,  2.9,  3. ,  3.3,  4. ,  4.8,  4.9,  5.1,  5.3,
                                5.4,  5.4,  5.4,  5.3,  5.3,  5.2,  4.8,  3.9,  3.1,  2.9,  2.8,
                                2.8,  2.8]
@@ -1344,7 +1344,7 @@ def ts_inputs(parameter={}, load='Flexlab', scale_load=4, scale_pv=4):
     data['tariff_energy_map'] = data['tariff_energy_map'].mask((data.index.hour>=12) & (data.index.hour<18), 2)
     data['tariff_power_map'] = data['tariff_energy_map'] # Apply same periods to demand charge
     data['tariff_energy_export_map'] = 0
-    data['generation_pv'] = 0
+    data['generation_pv'] = 0.0
     data.loc[data.index[8:19], 'generation_pv'] = [np.sin(i/(10/(np.pi))) for i in range(11)]
     data['generation_pv'] = data['generation_pv'] * scale_pv
     data['tariff_regup'] = data['tariff_power_map'] * 0.05 + 0.01
@@ -1353,7 +1353,7 @@ def ts_inputs(parameter={}, load='Flexlab', scale_load=4, scale_pv=4):
     data['date_time'] = data.index
     # Resample
     if True:
-        data = data.resample('5T').asfreq()
+        data = data.resample('5min').asfreq()
         for c in data.columns:
             if c in ['load_demand','generation_pv','oat']:
                 data[c] = data[c].interpolate()

@@ -245,8 +245,7 @@ def resample_variable_ts(data, reduced_start=60, reduced_ts=30, cols_fill=[]):
     # Resample Data
     reduced_start_ix = data.index[0]+pd.DateOffset(minutes=reduced_start)
     data_ts = (data.index[1] - data.index[0]).total_seconds()/60 # minutes
-    #shift = int(reduced_ts / data_ts / 2) # shift by half
-    shift = 0
+    shift = int(reduced_ts / data_ts / 2) # shift by half to align periods
 
     data_temp = data.copy(deep=True)
     data2 = data.loc[reduced_start_ix:].shift(shift).resample(f'{reduced_ts}min',
