@@ -25,7 +25,7 @@ except:
 from fmlc import eFMU, controller_stack, check_error, pdlog_to_df
 from fmlc.stackedclasses import PythonDB_wrapper, write_db, read_db
 
-import .modbus as modbus_io
+import doper.data.modbus as modbus_io
 
 class registerDummy:
     def __init__(self, v):

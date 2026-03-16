@@ -19,7 +19,7 @@ except:
 # Import FMLC
 from fmlc import eFMU, controller_stack, check_error, pdlog_to_df
 
-import .modbus as modbus_io
+import doper.data.modbus as modbus_io
 
 class dummy_connect():
     def close(self):
