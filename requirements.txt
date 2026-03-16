@@ -1,6 +1,5 @@
-numpy
 pandas
 pyomo>6.0
-matplotlib
-fmlc
 pyutilib
+fmlc @ git+https://github.com/LBNL-ETA/FMLC@2.0.0
+pymodbus>3.12
