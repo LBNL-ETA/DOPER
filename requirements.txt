@@ -1,4 +1,5 @@
 pandas
+matplotlib
 pyomo>6.0
 pyutilib
 fmlc @ git+https://github.com/LBNL-ETA/FMLC@2.0.0
