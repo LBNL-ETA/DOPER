@@ -25,7 +25,8 @@ except:
 from fmlc import eFMU, controller_stack, check_error, pdlog_to_df
 from fmlc.stackedclasses import PythonDB_wrapper, write_db, read_db
 
-import doper.data.modbus as modbus_io
+from pymodbus.client.mixin import ModbusClientMixin
+# import doper.data.modbus as modbus_io
 
 class registerDummy:
     def __init__(self, v):
@@ -39,30 +40,29 @@ class ModbusHandler():
         self.name = name
         self.rtype = rtype
         self.db_addr = db_addr
+        self.client = ModbusClientMixin()
         
     def getValue(self):
         """Get current value."""
         v = read_db(self.db_addr)[self.name]
         if self.rtype.lower() == 'float':
-            builder = modbus_io.encode()
-            builder.add_32bit_float(v)
-            return builder.to_registers()
+            return self.client.convert_to_registers(value=v,
+                                                    data_type='float32')
         elif self.rtype.lower() == 'int':
-            builder = modbus_io.encode()
-            builder.add_16bit_int(int(v))
-            return builder.to_registers()            
+            return self.client.convert_to_registers(value=v,
+                                                    data_type='int16')            
         else:
             return v
         
     def setValue(self, v):
         """Set new value."""
         if self.rtype.lower() == 'float':
-            decoder = modbus_io.decode(registerDummy(v))
-            v = decoder.decode_32bit_float()
+            v = self.client.convert_from_registers(registers=v,
+                                                   data_type='float32')
         elif self.rtype.lower() == 'int':
             v = [v]
-            decoder = modbus_io.decode(registerDummy(v))
-            v = decoder.decode_16bit_int()
+            v = self.client.convert_from_registers(registers=v,
+                                                   data_type='int16')
         write_db({self.name: v}, self.db_addr)
 
 

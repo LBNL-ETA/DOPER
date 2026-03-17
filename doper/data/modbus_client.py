@@ -70,17 +70,16 @@ class communication_scada(eFMU):
         # read register
         try:
             if mode == 'int':
-                r, i = modbus_io.read_register_int16(client, register, \
-                    dev_id, sleep=sleep, holding=holding, order=order)
+                r, i = modbus_io.read_register(client, register, dev_id, data_type='int16',
+                    sleep=sleep, holding=holding, order=order)
             elif mode == 'uint':
-                r, i = modbus_io.read_register_uint16(client, register, \
-                    dev_id, sleep=sleep, holding=holding, order=order)
+                r, i = modbus_io.read_register(client, register, dev_id, data_type='uint16',
+                    sleep=sleep, holding=holding, order=order)
             elif mode == 'float':
-                r, i = modbus_io.read_register_float32(client, register, \
-                    dev_id, sleep=sleep, holding=holding, order=order)
+                r, i = modbus_io.read_register(client, register, dev_id, data_type='float32',
+                    sleep=sleep, holding=holding, order=order)
             elif mode == 'coil':
-                r, i = modbus_io.read_coil(client, register, \
-                    dev_id, sleep=sleep)
+                r, i = modbus_io.read_coil(client, register, dev_id, sleep=sleep)
             else:
                 return default, f'ERROR: Mode "{mode}" not implemented.'
 
@@ -103,17 +102,16 @@ class communication_scada(eFMU):
         # write register
         try:
             if mode == 'int':
-                i = modbus_io.write_register_int16(client, register, \
-                    dev_id, int(value), sleep=sleep, order=order)
+                i = modbus_io.write_register_int16(client, register, dev_id, int(value),
+                    data_type='int16', sleep=sleep, order=order)
             elif mode == 'uint':
-                i = modbus_io.write_register_uint16(client, register, \
-                    dev_id, int(value), sleep=sleep, order=order)
+                i = modbus_io.write_register_uint16(client, register, dev_id, int(value),
+                    data_type='uint16', sleep=sleep, order=order)
             elif mode == 'float':
-                i = modbus_io.write_register_float32(client, register, \
-                    dev_id, value, sleep=sleep, order=order)
+                i = modbus_io.write_register_float32(client, register, dev_id, int(value),
+                    data_type='float32', sleep=sleep, order=order)
             elif mode == 'coil':
-                i = modbus_io.write_coil(client, register, \
-                    dev_id, value, sleep=sleep)
+                i = modbus_io.write_coil(client, register, dev_id, value, sleep=sleep)
             else:
                 return f'ERROR: Mode "{mode}" not implemented.'
             
