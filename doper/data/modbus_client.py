@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 import datetime as dtm
 
-from pymodbus.client import ModbusTcpClient
+# from pymodbus.client import ModbusTcpClient
 # from pymodbus.framer.socket_framer import ModbusSocketFramer
 
 try:
@@ -24,15 +24,6 @@ import doper.data.modbus as modbus_io
 class dummy_connect():
     def close(self):
         pass
-
-def address_to_tuple(address):
-    address = address.split(':')
-    address[1] = int(address[1])
-    if len(address) != 3:
-        address.append(0) # set slave to 0
-    else:
-        address[2] = int(address[2])
-    return tuple(address)
 
 class communication_scada(eFMU):
     def __init__(self):
@@ -144,8 +135,8 @@ class communication_scada(eFMU):
             # connect clients
             clients = {}
             for addr in sorted(np.unique([e['address'] for e in channels])):
-                addr2 = address_to_tuple(addr)
-                clients[addr] = ModbusTcpClient(host=addr2[0], port=addr2[1])#, framer=ModbusSocketFramer)
+                addr2 = modbus_io.address_to_tuple(addr)
+                clients[addr] = modbus_io.modbus_client(port=addr2[1], ip=addr2[0], baudrate=addr2[3])
                 clients[addr].connect()
             
             # read
@@ -159,7 +150,7 @@ class communication_scada(eFMU):
                     r['error'] = ''
                     r['valid'] = 0
                 else:
-                    r['value'], r['error'] = self.read_modbus(c, clients[addr], dev_id=address_to_tuple(addr)[2])
+                    r['value'], r['error'] = self.read_modbus(c, clients[addr], dev_id=modbus_io.address_to_tuple(addr)[2])
                     r['valid'] = int(r['error'] == '')
                 r['name'] = c['name']
                 r['duration'] = time.time()-st
@@ -194,8 +185,8 @@ class communication_scada(eFMU):
             address = np.unique([e['address'] for e in channels])
             if len(address) > 1:
                 raise ValueError (f'Only same addresses are supported. {address}')
-            address = address_to_tuple(address[0])
-            client = ModbusTcpClient(host=address[0], port=address[1])#, framer=ModbusSocketFramer)
+            address = modbus_io.address_to_tuple(address[0])
+            client = modbus_io.modbus_client(port=address[1], ip=address[0], baudrate=address[3])
             client.connect()
             # Write
             for c in channels:

@@ -16,6 +16,24 @@ TIMEOUT = 0.5
 # DATATYPES
 # https://github.com/pymodbus-dev/pymodbus/blob/dev/pymodbus/client/mixin.py#L680
 
+def address_to_tuple(address):
+    address = address.split(':')
+    if len(address) > 1:
+        try:
+            # TCP
+            address[1] = int(address[1])
+        except:
+            pass
+        if len(address) != 3:
+            address.append(0) # set slave to 0
+        else:
+            address[2] = int(address[2])
+        if len(address) == 4:
+            address[3] = int(address[3])
+        return tuple(address)
+    # RTU (simple)
+    return tuple([address, None, 0])
+
 def modbus_client(port=None, ip=None, baudrate=9600, stopbits=1, timeout=TIMEOUT):
     if ip:
         port = port if port else 502
