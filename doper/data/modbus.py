@@ -19,6 +19,8 @@ TIMEOUT = 0.5
 def address_to_tuple(address):
     address = address.split(':')
     if len(address) > 1:
+        if len(address[0]) < 6:
+            address[0] = None
         try:
             # TCP
             address[1] = int(address[1])
@@ -32,7 +34,7 @@ def address_to_tuple(address):
             address[3] = int(address[3])
         return tuple(address)
     # RTU (simple)
-    return tuple([address, None, 0, 9600])
+    return tuple([None, address, 0, 9600])
 
 def modbus_client(port=None, ip=None, baudrate=9600, stopbits=1, timeout=TIMEOUT):
     if ip:
