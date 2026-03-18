@@ -231,12 +231,12 @@ class communication_scada(eFMU):
     def compute(self):
         st = time.time()
         self.mode = self.input['mode']
-        if self.mode == 'get_scada':
+        if self.mode == 'get-scada':
             self.res = self.get_scada()
             self.output['output-data'] = self.res.to_json()
             msg = self.res_to_msg(self.res)
             self.init = False
-        elif self.mode == 'set_scada':
+        elif self.mode == 'set-scada':
             e = self.check_data(self.input['input-data'], self.init)
             if e:
                 msg = e
