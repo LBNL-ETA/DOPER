@@ -46,6 +46,7 @@ def modbus_client(port=None, ip=None, baudrate=9600, stopbits=1, timeout=TIMEOUT
         client = ModbusSerialClient(port=port, baudrate=baudrate,
                                     parity='N', bytesize=8, stopbits=stopbits,
                                     timeout=timeout)
+        client.connect()
     return client
     
 ### Holding Registers ###

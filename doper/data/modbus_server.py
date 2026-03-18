@@ -203,13 +203,6 @@ class server_scada(eFMU):
         self.init = True
         self.database = None
         self.modbus = None
-        
-    def check_data(self, data):
-        if (data == -1 or not data) and self.init:
-            return 'INFO: Waiting to initialize.'
-        elif (data == -1 or not data) and not self.init:
-            return 'ERROR: Missing data.'
-        return ''
 
     def check_init_db(self):
         # check if database is running and responding
@@ -250,7 +243,7 @@ class server_scada(eFMU):
         msg = ''
 
         # check input data
-        msg += self.check_data(self.input['input-data'])
+        msg += self.check_data(self.input['input-data'], self.init)
         
         if msg == '':
             self.channels = pd.read_json(io.StringIO(self.input['channels']))

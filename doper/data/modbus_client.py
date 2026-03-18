@@ -27,9 +27,14 @@ class dummy_connect():
 
 class communication_scada(eFMU):
     def __init__(self):
-        self.input = {'input-data':None, 'timeout':None, 'channels':None, 'mode':None}
-        self.output = {'output-data':None, 'duration':None}
-        
+        self.input = {'input-data': None,
+                      'timeout': None,
+                      'channels': None,
+                      'sleep-between': None,
+                      'mode': None}
+        self.output = {'output-data': None,
+                       'duration': None}
+
         self.init = True
         
     def res_to_msg(self, res):
@@ -93,13 +98,13 @@ class communication_scada(eFMU):
         # write register
         try:
             if mode == 'int':
-                i = modbus_io.write_register_int16(client, register, dev_id, int(value),
+                i = modbus_io.write_register(client, register, dev_id, int(value),
                     data_type='int16', sleep=sleep, order=order)
             elif mode == 'uint':
-                i = modbus_io.write_register_uint16(client, register, dev_id, int(value),
+                i = modbus_io.write_register(client, register, dev_id, int(value),
                     data_type='uint16', sleep=sleep, order=order)
             elif mode == 'float':
-                i = modbus_io.write_register_float32(client, register, dev_id, int(value),
+                i = modbus_io.write_register(client, register, dev_id, int(value),
                     data_type='float32', sleep=sleep, order=order)
             elif mode == 'coil':
                 i = modbus_io.write_coil(client, register, dev_id, value, sleep=sleep)
@@ -137,7 +142,7 @@ class communication_scada(eFMU):
             for addr in sorted(np.unique([e['address'] for e in channels])):
                 addr2 = modbus_io.address_to_tuple(addr)
                 clients[addr] = modbus_io.modbus_client(port=addr2[1], ip=addr2[0], baudrate=addr2[3])
-                clients[addr].connect()
+                # clients[addr].connect()
             
             # read
             for c in channels:
@@ -155,6 +160,8 @@ class communication_scada(eFMU):
                 r['name'] = c['name']
                 r['duration'] = time.time()-st
                 res.append(r)
+                if self.input['sleep-between']:
+                    time.sleep(self.input['sleep-between'])
             res = pd.DataFrame(res)
         except Exception as e:
             e = f'ERROR: {e}\n\n{traceback.format_exc()}'
@@ -187,7 +194,7 @@ class communication_scada(eFMU):
                 raise ValueError (f'Only same addresses are supported. {address}')
             address = modbus_io.address_to_tuple(address[0])
             client = modbus_io.modbus_client(port=address[1], ip=address[0], baudrate=address[3])
-            client.connect()
+            # client.connect()
             # Write
             for c in channels:
                 name = c['name']
@@ -205,6 +212,8 @@ class communication_scada(eFMU):
                 r['name'] = name
                 r['duration'] = time.time()-st
                 res.append(r)
+                if self.input['sleep-between']:
+                    time.sleep(self.input['sleep-between'])
             res = pd.DataFrame(res)
         except Exception as e:
             e = f'ERROR: {e}\n\n{traceback.format_exc()}'
@@ -219,12 +228,6 @@ class communication_scada(eFMU):
             res.index = res['name']
         return res
         
-    def check_data(self, data):
-        if (data == -1 or not data) and self.init:
-            return 'INFO: Waiting to initialize.'
-        elif (data == -1 or not data) and not self.init:
-            return 'ERROR: Missing data.'
-        
     def compute(self):
         st = time.time()
         self.mode = self.input['mode']
@@ -234,7 +237,7 @@ class communication_scada(eFMU):
             msg = self.res_to_msg(self.res)
             self.init = False
         elif self.mode == 'set_scada':
-            e = self.check_data(self.input['input-data'])
+            e = self.check_data(self.input['input-data'], self.init)
             if e:
                 msg = e
             else:
