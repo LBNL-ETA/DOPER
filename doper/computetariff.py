@@ -9,8 +9,24 @@ Compute tariff module.
 
 # pylint: disable=invalid-name, too-many-arguments, redefined-outer-name
 
+def convert_tariff_dict(par):
+    # tariff periods
+    check_keys = ['tariff']
+    for check_key in check_keys:
+        if check_key in par:
+            for k, v in par[check_key].items():
+                if isinstance(v, dict):
+                    par[check_key][k] = {int(vk): vv for vk, vv in v.items()}
+    # previous periods
+    tt = par['site']['demand_periods_prev']
+    par['site']['demand_periods_prev'] = {int(vk): vv for vk, vv in tt.items()}
+    return par
+
 def compute_periods(df, tariff, parameter, return_tariff=True, weekday_map=False, warnings=True):
     """compute tariff periods"""
+
+    # convert dict sring indices to int
+    parameter = convert_tariff_dict(parameter)
 
     daytypes = True
     if not 'weekday' in tariff[tariff['seasons_map'][tariff['seasons'][0]]]['hours']:
