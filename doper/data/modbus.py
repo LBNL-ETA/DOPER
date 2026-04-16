@@ -56,6 +56,10 @@ def set_reading_method(client, holding=True):
     else:
         return client.read_input_registers
     
+def swap_bytes_in_registers(registers):
+    # 0x1234 -> 0x3412
+    return [((r & 0xFF) << 8) | ((r >> 8) & 0xFF) for r in registers]
+    
 def read_register(client, address, device_id, data_type='int16', decode_res=True,
                   sleep=SLEEP, holding=True, order=['big','little'], batch_data=False):
     reader = set_reading_method(client, holding=holding)
@@ -72,15 +76,18 @@ def read_register(client, address, device_id, data_type='int16', decode_res=True
         for rg in res.registers:
             value = client.convert_from_registers(registers=[rg],
                                                   data_type=data_type,
-                                                  word_order=order)
+                                                  word_order=order[1])
             res_dec.append(value)
         return res_dec, i
     elif not decode_res:
         return res, i
     else:
-        value = client.convert_from_registers(registers=res.registers,
+        reg_values = res.registers
+        if order[0] == 'little':
+            reg_values = swap_bytes_in_registers(reg_values)
+        value = client.convert_from_registers(registers=reg_values,
                                               data_type=data_type,
-                                              word_order=order)
+                                              word_order=order[1])
         return value, i
     
 def write_register(client, address, device_id, value, data_type='int16',
@@ -88,7 +95,9 @@ def write_register(client, address, device_id, value, data_type='int16',
     data_type = ModbusClientMixin.DATATYPE[data_type.upper()]
     payload = client.convert_to_registers(value=value,
                                           data_type=data_type,
-                                          word_order=order)
+                                          word_order=order[1])
+    if order[0] == 'little':
+        payload = swap_bytes_in_registers(payload)
     res = client.write_registers(address, payload, device_id=device_id)
     i = 0
     while res.isError() and i < MAX_RETRY:
