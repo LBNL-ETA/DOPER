@@ -139,10 +139,13 @@ class communication_scada(eFMU):
 
             # connect clients
             clients = {}
-            for addr in sorted(np.unique([modbus_io.get_uniconn(e['address']) for e in channels])):
-                addr2 = modbus_io.address_to_tuple(addr)
-                clients[addr] = modbus_io.modbus_client(port=addr2[1], ip=addr2[0], baudrate=addr2[3])
-                # clients[addr].connect()
+            for addr in sorted(np.unique([e['address'] for e in channels])):
+                # filter same com port
+                client = modbus_io.get_uniconn(addr)
+                if not client in clients:
+                    addr2 = modbus_io.address_to_tuple(addr)
+                    clients[client] = modbus_io.modbus_client(port=addr2[1], ip=addr2[0], baudrate=addr2[3])
+                    # clients[addr].connect()
             
             # read
             for c in channels:
