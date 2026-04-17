@@ -36,6 +36,9 @@ def address_to_tuple(address):
     # RTU (simple)
     return tuple([None, address, 0, 9600])
 
+def get_uniconn(addr):
+    return str(':'.join(addr.split(':')[:2]))
+
 def modbus_client(port=None, ip=None, baudrate=9600, stopbits=1, timeout=TIMEOUT):
     if ip:
         port = port if port else 502

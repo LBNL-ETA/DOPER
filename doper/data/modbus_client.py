@@ -19,7 +19,7 @@ except:
 # Import FMLC
 from fmlc import eFMU, controller_stack, check_error, pdlog_to_df
 
-import doper.data.modbus as modbus_io
+import doper.data.modbus as modbus_io, get_uniconn
 
 class dummy_connect():
     def close(self):
@@ -139,7 +139,7 @@ class communication_scada(eFMU):
 
             # connect clients
             clients = {}
-            for addr in sorted(np.unique([e['address'] for e in channels])):
+            for addr in sorted(np.unique([get_uniconn(e['address']) for e in channels])):
                 addr2 = modbus_io.address_to_tuple(addr)
                 clients[addr] = modbus_io.modbus_client(port=addr2[1], ip=addr2[0], baudrate=addr2[3])
                 # clients[addr].connect()
@@ -149,13 +149,14 @@ class communication_scada(eFMU):
                 st = time.time()
                 r = {}
                 addr = c['address']
+                client = clients[get_uniconn(addr)]
                 if c['register'] == -1:
                     # dummy; use default
                     r['value'] = c['default']
                     r['error'] = ''
                     r['valid'] = 0
                 else:
-                    r['value'], r['error'] = self.read_modbus(c, clients[addr], dev_id=modbus_io.address_to_tuple(addr)[2])
+                    r['value'], r['error'] = self.read_modbus(c, client, dev_id=modbus_io.address_to_tuple(addr)[2])
                     r['valid'] = int(r['error'] == '')
                 r['name'] = c['name']
                 r['duration'] = time.time()-st
