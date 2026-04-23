@@ -39,7 +39,7 @@ def modbus_client(port=None, ip=None, baudrate=9600, stopbits=1, timeout=TIMEOUT
     if ip:
         port = port if port else 502
         client = ModbusTcpClient(ip, port=port, timeout=timeout, FramerType=FramerType.SOCKET,
-                                 name=name, timeout=timeout, retries=retries)
+                                 name=name, retries=retries)
     else:
         client = ModbusSerialClient(port=port, baudrate=int(baudrate),
                                     parity='N', bytesize=8, stopbits=int(stopbits),
