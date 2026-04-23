@@ -38,12 +38,12 @@ def modbus_client(port=None, ip=None, baudrate=9600, stopbits=1, timeout=TIMEOUT
                   retries=0, name="mb1", connect=True):
     if ip:
         port = port if port else 502
-        client = ModbusTcpClient(ip, port=port, timeout=timeout, FramerType=FramerType.SOCKET,
+        client = ModbusTcpClient(ip, port=port, timeout=timeout, framer=FramerType.SOCKET,
                                  name=name, retries=retries)
     else:
         client = ModbusSerialClient(port=port, baudrate=int(baudrate),
                                     parity='N', bytesize=8, stopbits=int(stopbits),
-                                    timeout=timeout, name=name, FramerType=FramerType.RTU,
+                                    timeout=timeout, name=name, framer=FramerType.RTU,
                                     retries=retries)
     if connect:
         client.connect()
