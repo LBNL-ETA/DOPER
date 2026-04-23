@@ -1,13 +1,8 @@
 import time
-# from pymodbus.constants import Endian
-# from pymodbus.payload import BinaryPayloadBuilder
-# from pymodbus.payload import BinaryPayloadDecoder
 from pymodbus.client import ModbusSerialClient
 from pymodbus.client import ModbusTcpClient
 from pymodbus.client.mixin import ModbusClientMixin
-
-# import binascii
-# import struct
+from pymodbus.framer import FramerType
 
 MAX_RETRY = 5
 SLEEP = 0.5
@@ -39,16 +34,18 @@ def address_to_tuple(address):
 def get_uniconn(addr):
     return str(':'.join(addr.split(':')[:2]))
 
-def modbus_client(port=None, ip=None, baudrate=9600, stopbits=1, timeout=TIMEOUT):
+def modbus_client(port=None, ip=None, baudrate=9600, stopbits=1, timeout=TIMEOUT,
+                  retries=0, name="mb1", connect=True):
     if ip:
         port = port if port else 502
-        client = ModbusTcpClient(ip, port=port, timeout=timeout)
-            #framer=ModbusFramer)
-        client.connect()
+        client = ModbusTcpClient(ip, port=port, timeout=timeout, FramerType=FramerType.SOCKET,
+                                 name=name, timeout=timeout, retries=retries)
     else:
-        client = ModbusSerialClient(port=port, baudrate=baudrate,
-                                    parity='N', bytesize=8, stopbits=stopbits,
-                                    timeout=timeout)
+        client = ModbusSerialClient(port=port, baudrate=int(baudrate),
+                                    parity='N', bytesize=8, stopbits=int(stopbits),
+                                    timeout=timeout, name=name, FramerType=FramerType.RTU,
+                                    retries=retries)
+    if connect:
         client.connect()
     return client
     
@@ -64,13 +61,14 @@ def swap_bytes_in_registers(registers):
     return [((r & 0xFF) << 8) | ((r >> 8) & 0xFF) for r in registers]
     
 def read_register(client, address, device_id, data_type='int16', decode_res=True,
-                  sleep=SLEEP, holding=True, order=['big','little'], batch_data=False):
+                  sleep=SLEEP, holding=True, order=['big','little'], batch_data=False,
+                  max_retry=MAX_RETRY):
     reader = set_reading_method(client, holding=holding)
     data_type = ModbusClientMixin.DATATYPE[data_type.upper()]
     count = data_type.value[1]
     res = reader(address, count=count, device_id=device_id)
     i = 0
-    while res.isError() and i < MAX_RETRY:
+    while res.isError() and i < max_retry:
         time.sleep(sleep)
         res = reader(address, count=count, device_id=device_id)
         i += 1
@@ -94,7 +92,7 @@ def read_register(client, address, device_id, data_type='int16', decode_res=True
         return value, i
     
 def write_register(client, address, device_id, value, data_type='int16',
-                   sleep=SLEEP, order=['big','little']):
+                   sleep=SLEEP, order=['big','little'], max_retry=MAX_RETRY):
     data_type = ModbusClientMixin.DATATYPE[data_type.upper()]
     payload = client.convert_to_registers(value=value,
                                           data_type=data_type,
@@ -103,17 +101,17 @@ def write_register(client, address, device_id, value, data_type='int16',
         payload = swap_bytes_in_registers(payload)
     res = client.write_registers(address, payload, device_id=device_id)
     i = 0
-    while res.isError() and i < MAX_RETRY:
+    while res.isError() and i < max_retry:
         time.sleep(sleep)
         res = client.write_registers(address, payload, device_id=device_id)
         i += 1
     return i
 
 ### Coils ###
-def read_coil(client, address, device_id, count=1, sleep=SLEEP):
+def read_coil(client, address, device_id, count=1, sleep=SLEEP, max_retry=MAX_RETRY):
     res = client.read_coils(address=address, count=count, device_id=device_id)
     i = 0
-    while res.isError() and i < MAX_RETRY:
+    while res.isError() and i < max_retry:
         time.sleep(sleep)
         res = client.read_coils(address=address, count=count, device_id=device_id)
         i += 1
@@ -122,10 +120,10 @@ def read_coil(client, address, device_id, count=1, sleep=SLEEP):
         res = res[0]
     return res, i
 
-def write_coil(client, address, device_id, value, sleep=SLEEP):
+def write_coil(client, address, device_id, value, sleep=SLEEP, max_retry=MAX_RETRY):
     res = client.write_coils(address=address, values=value, device_id=device_id)
     i = 0
-    while res.isError() and i < MAX_RETRY:
+    while res.isError() and i < max_retry:
         time.sleep(sleep)
         res = client.write_coils(address=address, values=value, device_id=device_id)
         i += 1
