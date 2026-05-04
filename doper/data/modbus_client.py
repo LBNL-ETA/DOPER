@@ -39,9 +39,9 @@ class communication_scada(eFMU):
         
     def res_to_msg(self, res):
         if not 'error' in res.columns:
-            msg = 'ERROR: No result returned. Check channels dataframe.'
+            msg = 'No result returned. Check channels dataframe.'
         elif res['error'].str.contains('ERROR').any():
-            msg = 'ERROR: See "output-data".'
+            msg = 'Communication error, see "output-data".'
         else:
             msg = 'Done.'
         return msg
@@ -144,7 +144,8 @@ class communication_scada(eFMU):
                 client = modbus_io.get_uniconn(addr)
                 if not client in clients:
                     addr2 = modbus_io.address_to_tuple(addr)
-                    clients[client] = modbus_io.modbus_client(port=addr2[1], ip=addr2[0], baudrate=addr2[3])
+                    clients[client] = modbus_io.modbus_client(port=addr2[1], ip=addr2[0], baudrate=addr2[3],
+                                                              pmb_debug=self.pmb_debug)
                     # clients[addr].connect()
             
             # read
@@ -197,7 +198,8 @@ class communication_scada(eFMU):
             if len(address) > 1:
                 raise ValueError (f'Only same addresses are supported. {address}')
             address = modbus_io.address_to_tuple(address[0])
-            client = modbus_io.modbus_client(port=address[1], ip=address[0], baudrate=address[3])
+            client = modbus_io.modbus_client(port=address[1], ip=address[0], baudrate=address[3],
+                                             pmb_debug=self.pmb_debug)
             # client.connect()
             # Write
             for c in channels:
@@ -235,6 +237,7 @@ class communication_scada(eFMU):
     def compute(self):
         st = time.time()
         self.mode = self.input['mode']
+        self.pmb_debug = self.input['pmb_debug']
         if self.mode == 'get-scada':
             self.res = self.get_scada()
             self.output['output-data'] = self.res.to_json()

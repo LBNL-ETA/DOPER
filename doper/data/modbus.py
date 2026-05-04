@@ -3,6 +3,7 @@ from pymodbus.client import ModbusSerialClient
 from pymodbus.client import ModbusTcpClient
 from pymodbus.client.mixin import ModbusClientMixin
 from pymodbus.framer import FramerType
+from pymodbus import pymodbus_apply_logging_config
 
 MAX_RETRY = 5
 SLEEP = 0.5
@@ -35,7 +36,10 @@ def get_uniconn(addr):
     return str(':'.join(addr.split(':')[:2]))
 
 def modbus_client(port=None, ip=None, baudrate=9600, stopbits=1, timeout=TIMEOUT,
-                  retries=0, name="mb1", connect=True):
+                  retries=0, name="mb1", connect=True, pmb_debug=False):
+    # set log level
+    pymodbus_apply_logging_config(level=pmb_debug if pmb_debug else 'critical')
+    # make connection
     if ip:
         port = port if port else 502
         client = ModbusTcpClient(ip, port=port, timeout=timeout, framer=FramerType.SOCKET,
