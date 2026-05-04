@@ -31,6 +31,7 @@ class communication_scada(eFMU):
                       'timeout': None,
                       'channels': None,
                       'sleep-between': None,
+                      'pmb-debug': None,
                       'mode': None}
         self.output = {'output-data': None,
                        'duration': None}
@@ -237,7 +238,7 @@ class communication_scada(eFMU):
     def compute(self):
         st = time.time()
         self.mode = self.input['mode']
-        self.pmb_debug = self.input['pmb_debug']
+        self.pmb_debug = self.input['pmb-debug']
         if self.mode == 'get-scada':
             self.res = self.get_scada()
             self.output['output-data'] = self.res.to_json()
