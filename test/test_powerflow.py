@@ -7,10 +7,11 @@ sys.path.append('../src')
 
 
 from doper import DOPER, get_solver, get_root
-from doper.models.basemodel import base_model, default_output_list
+from doper.models.basemodel import base_model
 from doper.models.battery import add_battery
 from doper.models.network import add_network
 import doper.examples as example
+from doper.utility import default_output_list
 
 
 from pyomo.environ import Objective, minimize

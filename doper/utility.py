@@ -19,6 +19,12 @@ import subprocess as sp
 import numpy as np
 import pandas as pd
 from packaging import version
+from copy import deepcopy
+
+from .examples.example import (default_parameter,
+                               parameter_add_genset,
+                               parameter_add_battery,
+                               parameter_add_loadcontrol)
 
 def fix_bug_pyomo():
     """Fix bug in pyomo when intializing solver (timeout after 5s)"""
@@ -95,7 +101,7 @@ def pandas_to_dict(df, columns=None, convertTs=False):
             df.columns = columns
         for c in df.columns:
             for k,v in df[c].items():
-                d[k,c] = int(v) if v % 1 == 0 else float(v)
+                d[k, c] = int(v) if v % 1 == 0 else float(v)
     elif isinstance(df, pd.Series):
         for k,v in df.items():
             d[k] = int(v) if v % 1 == 0 else float(v)
@@ -104,7 +110,7 @@ def pandas_to_dict(df, columns=None, convertTs=False):
     return d
 
 
-def unpack_ts_input(inputs, colName, default=None, required=True):
+def unpack_ts_input(inputs, colName, default=None, required=True, as_string=False):
     '''
     function attempts to unpack timeseries inputs using:
     inputs - timeseries input dataframe.
@@ -116,8 +122,11 @@ def unpack_ts_input(inputs, colName, default=None, required=True):
     '''                       
         
     # attempt to load colName from inputs df
-    if colName in inputs.columns: 
-        return pandas_to_dict(inputs[colName])
+    if colName in inputs.columns:
+        vals = pandas_to_dict(inputs[colName])
+        if as_string:
+            vals = {k: str(v) for k, v in vals.items()}
+        return vals
     # otherwise return default, if provided        
     elif default is not None:
         if required:
@@ -410,3 +419,313 @@ def mapExternalGen(parameter, data, model):
         # convert df cols to dict
         ext_power_dict = pandas_to_dict(data[exGenNodeList],  columns=model.nodes)
     return ext_power_dict
+
+def update_nested_dict(base, updates):
+    """Recursively update dict values with nested keys."""
+    for key, value in updates.items():
+        if isinstance(value, dict):
+            if key not in base or not isinstance(base.get(key), dict):
+                base[key] = deepcopy(value)
+            else:
+                update_nested_dict(base[key], value)
+        else:
+            base[key] = value
+
+def make_config(cfg):
+    # get basic config
+    parameter = default_parameter()
+
+    # update systems only
+    if cfg.get("system", {}):
+        parameter["system"].update(cfg["system"])
+
+    # add model specific config
+    if cfg.get("system", {}).get("battery"):
+        parameter = parameter_add_battery(parameter)
+    if cfg.get("system", {}).get("genset"):
+        parameter = parameter_add_genset(parameter)
+    if cfg.get("system", {}).get("load_control"):
+        parameter = parameter_add_loadcontrol(parameter)
+    
+    # update full config
+    update_nested_dict(parameter, cfg)
+
+    return parameter
+
+# Results processing
+def default_output_list(parameter):
+    
+    output_list = [
+        {
+            'name': 'gridImport',
+            'data': 'grid_import_site',
+            'df_label': 'Import Power [kW]'
+        },
+        {
+            'name': 'gridExport',
+            'data': 'grid_export_site',
+            'df_label': 'Export Power [kW]'
+        },
+        {
+            'name': 'siteLoad',
+            'data': 'load_served_site',
+            'df_label': 'Load Power [kW]'
+        },
+        {
+            'name': 'tariffEnergyPeriod',
+            'data': 'tariff_energy_map',
+            'df_label': 'Tariff Energy Period [-]'
+        },
+        {
+            'name': 'tariffPowerPeriod',
+            'data': 'tariff_power_map',
+            'df_label': 'Tariff Power Period [-]'
+        },
+        {
+            'name': 'outsideTemp',
+            'data': 'outside_temperature',
+            'df_label': 'Temperature [C]'
+        }
+    ]
+    
+    # optional entry for pv
+    if parameter['system']['pv']:
+        output_list +=  [
+            {
+                'name': 'pvPower',
+                'data': 'generation_pv_site',
+                'df_label': 'PV Power [kW]'
+            }
+        ]
+        
+    # optional entry for batteries
+    if parameter['system']['battery']:
+        output_list +=  [
+            {
+                'name': 'batCharge',
+                'data': 'sum_battery_charge_grid_power_site',
+                'df_label': 'Battery Charging Power [kW]'
+            },
+            {
+                'name': 'batDisharge',
+                'data': 'sum_battery_discharge_grid_power_site',
+                'df_label': 'Battery Discharging Power [kW]'
+            },
+            {
+                'name': 'batSOC',
+                'data': 'battery_agg_soc',
+                'df_label': 'Battery Aggregate SOC [-]'
+            }
+        ]
+    
+    # optional entry for gensets
+    if parameter['system']['genset']:
+        output_list +=  [
+            {
+                'name': 'gensetPower',
+                'data': 'sum_genset_power_site',
+                'df_label': 'Genset Power [kW]'
+            }
+        ]
+        
+    # optional entry for load control
+    if parameter['system']['load_control']:
+        output_list +=  [
+            {
+                'name': 'load_shed_site',
+                'data': 'load_shed_site',
+                'df_label': 'Total Shed Load [kW]'
+            }
+        ]
+        
+    # need to add optinal entries for batteries and reg modes
+    
+    return output_list
+
+
+# Results processing
+def dev_output_list(parameter):
+    
+    output_list = [
+        {
+            'name': 'gridImport',
+            'data': 'grid_import_site',
+            'df_label': 'gridImport_site'
+        },
+        {
+            'name': 'gridExport',
+            'data': 'grid_export_site',
+            'df_label': 'gridExport_site'
+        },
+        {
+            'name': 'siteLoad',
+            'data': 'load_served_site',
+            'df_label': 'load_site'
+        }
+    ]
+    
+    # optional entry for pv
+    if parameter['system']['pv']:
+        output_list +=  [
+            {
+                'name': 'pvPower',
+                'data': 'generation_pv_site',
+                'df_label': 'pvGen_site'
+            }
+        ]
+        
+    # optional entry for batteries
+    if parameter['system']['battery']:
+        output_list +=  [
+            {
+                'name': 'batCharge',
+                'data': 'sum_battery_charge_grid_power_site',
+                'df_label': 'batCharge_site'
+            },
+            {
+                'name': 'batDisharge',
+                'data': 'sum_battery_discharge_grid_power_site',
+                'df_label': 'batDischarge_site'
+            }
+        ]
+    
+    # optional entry for gensets
+    if parameter['system']['genset']:
+        output_list +=  [
+            {
+                'name': 'gensetPower',
+                'data': 'sum_genset_power_site',
+                'df_label': 'genset_site'
+            }
+        ]
+        
+    # optional entry for load control
+    if parameter['system']['load_control']:
+        output_list +=  [
+            # {
+            #     'name': 'load_total_shed',
+            #     'data': 'load_total_shed',
+            #     'df_label': 'Total Shed Load [kW]'
+            # }
+        ]
+        
+    # need to add optinal entries for batteries and reg modes
+    
+    # entries for node values
+    output_list += [
+        {
+            'name': 'gridImport',
+            'data': 'grid_import',
+            'index': 'nodes',
+            'df_label': 'gridImport_'
+        },
+        {
+            'name': 'gridExport',
+            'data': 'grid_export',
+            'index': 'nodes',
+            'df_label': 'gridExport_'
+        },
+        {
+            'name': 'loadServed',
+            'data': 'load_served',
+            'index': 'nodes',
+            'df_label': 'load_'
+        },
+        {
+            'name': 'pvGen',
+            'data': 'generation_pv',
+            'index': 'nodes',
+            'df_label': 'pvGen_'
+        },
+        {
+            'name': 'powerInj',
+            'data': 'powerExchangeOut',
+            'index': 'nodes',
+            'df_label': 'powerInj_'
+        },
+        {
+            'name': 'powerAbs',
+            'data': 'powerExchangeIn',
+            'index': 'nodes',
+            'df_label': 'powerAbs_'
+        },
+        {
+            'name': 'gensetGen',
+            'data': 'sum_genset_power',
+            'index': 'nodes',
+            'df_label': 'genset_'
+        },
+        {
+            'name': 'batCharge',
+            'data': 'sum_battery_charge_grid_power',
+            'index': 'nodes',
+            'df_label': 'batCharge_'
+        },
+        {
+            'name': 'batDisharge',
+            'data': 'sum_battery_discharge_grid_power',
+            'index': 'nodes',
+            'df_label': 'batDischarge_'
+        }
+    ]
+    
+    if 'network' in parameter.keys():
+        if not parameter['network']['settings']['simplePowerExchange']:
+            # add node voltages if power-flow model is enabled
+            output_list += [
+                {
+                    'name': 'voltage_real',
+                    'data': 'voltage_real',
+                    'index': 'nodes',
+                    'df_label': 'voltageReal_'
+                },
+                {
+                    'name': 'voltage_imag',
+                    'data': 'voltage_imag',
+                    'index': 'nodes',
+                    'df_label': 'voltageImag_'
+                },
+            ]
+    
+    return output_list
+
+def generate_summary_metrics(model):
+    '''
+    
+
+    Returns
+    -------
+        summary (dict): dictionary of metrics related to economic and energy results
+
+    '''
+    
+    summary = {
+        'cost': {},
+        'energy': {},
+        'power': {}
+    }
+    
+    summary['cost']['total'] = model.objective.expr()
+    summary['cost']['elec_energy'] = model.sum_energy_cost.value
+    summary['cost']['elec_demand'] = model.sum_demand_cost.value
+    summary['cost']['fuelcost_ng'] = 0
+    summary['cost']['fuelcost_diesel'] = 0
+    summary['cost']['load_curtail'] = None
+    summary['cost']['export_rev'] = model.sum_export_revenue.value
+    summary['cost']['reg_rev'] = model.sum_regulation_revenue.value
+    
+    summary['energy']['load'] = model.objective.expr()
+    summary['energy']['pv_gen'] = model.objective.expr()
+    summary['energy']['genset_gen'] = model.objective.expr()
+    summary['energy']['batt_charge'] = model.objective.expr()
+    summary['energy']['batt_discharge'] = model.objective.expr()
+    summary['energy']['exported'] = model.objective.expr()
+    summary['energy']['curtailed_load'] = model.objective.expr()
+    summary['energy']['ng_used'] = model.objective.expr()
+    summary['energy']['diesel_used'] = model.objective.expr()
+    
+    summary['power']['peak_load'] = model.objective.expr()
+    summary['power']['peak_import'] = model.objective.expr()
+    summary['power']['peak_export'] = model.objective.expr()
+    
+    return summary

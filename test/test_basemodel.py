@@ -4,8 +4,9 @@ import unittest
 from pyomo.environ import Objective, minimize
 
 from doper import DOPER, get_solver, get_root
-from doper.models.basemodel import base_model, default_output_list
+from doper.models.basemodel import base_model
 import doper.examples as example
+from doper.utility import default_output_list
 
 class TestBaseModel(unittest.TestCase):
     '''

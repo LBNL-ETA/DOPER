@@ -7,6 +7,8 @@ import sys
 import json
 import setuptools
 import subprocess as sp
+from setuptools.command.install import install
+from setuptools.command.develop import develop
 
 root = os.path.dirname(os.path.abspath(__file__))
 
@@ -24,14 +26,34 @@ with open('requirements.txt', 'r', encoding='utf8') as f:
 with open('doper/__init__.py', 'r', encoding='utf8') as f:
     version = json.loads(f.read().split('__version__ = ')[1].split('\n')[0])
 
-# setup solvers
-if INSTALL_SOLVERS:
+def install_solvers():
     print('Installing Solvers...')
+    solvers_dir = os.path.join(root, 'doper', 'solvers')
+
     if not 'win' in sys.platform:
-        sp.call('sh setup_solvers.sh', shell=True, cwd=os.path.join(root, 'doper', 'solvers'))
+        result = sp.call('sh setup_solvers.sh', shell=True, cwd=solvers_dir)
     else:
-        sp.call('setup_solvers.bat', shell=True, cwd=os.path.join(root, 'doper', 'solvers'))
+        result = sp.call('setup_solvers.bat', shell=True, cwd=solvers_dir)
+
+    if result != 0:
+        raise RuntimeError(f'Solver installation failed with exit code {result}.')
+
     print('done.')
+
+
+class InstallCommand(install):
+    def run(self):
+        super().run()
+        if INSTALL_SOLVERS:
+            install_solvers()
+
+
+class DevelopCommand(develop):
+    def run(self):
+        super().run()
+        if INSTALL_SOLVERS:
+            install_solvers()
+
 
 setuptools.setup(
     name="DOPER",
@@ -61,5 +83,9 @@ setuptools.setup(
                             'resources/pvlib/*']},
     include_package_data=True,
     python_requires=">=3.6",
-    install_requires=install_requires
+    install_requires=install_requires,
+    cmdclass={
+        'install': InstallCommand,
+        'develop': DevelopCommand,
+    },
 )

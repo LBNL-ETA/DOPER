@@ -19,7 +19,10 @@ from time import time
 import pandas as pd
 import pyutilib.subprocess.GlobalData
 
+from .models.make_model import construct_model_function
 from .utility import fix_bug_pyomo, check_solver, pyomo_read_parameter
+from .utility import make_config, get_solver
+from .utility import default_output_list, generate_summary_metrics
 
 # Fix bug in pyomo when intializing solver (timeout after 5s)
 fix_bug_pyomo()
@@ -28,7 +31,6 @@ fix_bug_pyomo()
 check_solver()
 
 from pyomo.opt import SolverFactory, TerminationCondition
-from .models.basemodel import default_output_list, generate_summary_metrics
 
 def get_root(f=None):
     """get the root of the module"""
@@ -272,3 +274,27 @@ class DOPER:
             # else:
             #     df = pd.DataFrame()
         return [time()-t_start, objective, df, self.model, result, termination, self.parameter]
+
+def make_doper(cfg):
+    # make config
+    parameter = make_config(cfg)
+
+    # output list
+    output_list = default_output_list(parameter)
+    if parameter.get("controller", {}).get("output_list"):
+        output_list.update(parameter["controller"]["output_list"])
+
+    #solver path
+    solver_path = get_solver(parameter['controller']['solver_name'],
+                             solver_dir=parameter['controller']['solver_path'])
+
+    # make model
+    model = construct_model_function()
+
+    # init doper
+    return DOPER(
+        model=model,
+        parameter=parameter,
+        solver_path=solver_path,
+        output_list=output_list,
+    )

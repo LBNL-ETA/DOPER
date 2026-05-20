@@ -3,6 +3,7 @@ tmp
 *.log
 Setup Log*.txt
 *.lock
+/logs/*
 
 # Python compiled files #
 #########################

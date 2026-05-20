@@ -16,6 +16,8 @@ import math
 import numpy as np
 import pandas as pd
 
+ROOT = os.path.dirname(os.path.abspath(__file__))
+
 # Example data for running SINGLE-NODE models (development)
 def default_parameter():
     """default_parameter"""
@@ -74,14 +76,23 @@ def default_parameter():
     parameter['site']['regulation_reserved_variable_battery'] = False # Flag to reserve battery capacity for regulation (variable ts)
     parameter['site']['import_max'] = 10000 # kW
     parameter['site']['export_max'] = 10000 # kW
-    parameter['site']['demand_periods_prev'] = {0:0,1:0,2:0} # kW peak previously set for periods 0-offpeak, 1-midpeak, 2-onpeak
+    parameter['site']['demand_periods_prev'] = {0:0, 1:0, 2:0} # kW peak previously set for periods 0-offpeak, 1-midpeak, 2-onpeak
     parameter['site']['demand_coincident_prev'] = 0 # kW peak previously set for coincident
     parameter['site']['input_timezone'] = -8 # Timezone of inputs (in hourly offset from UTC)
     parameter['site']['local_timezone'] = 'America/Los_Angeles' # Local timezone of tariff (as Python timezone string)
+    parameter['site']['tariff_name'] = 'e19-2022' # Tariff name
+    
     parameter['controller'] = {}
     parameter['controller']['timestep'] = 60*60 # Controller timestep in seconds
     parameter['controller']['horizon'] = 24*60*60 # Controller horizon in seconds
-    parameter['controller']['solver_dir'] = 'solvers' # Controller solver directory
+    parameter['controller']['solver_path'] = os.path.join(ROOT, '..', 'solvers') # Controller solver directory
+    parameter['controller']['solver_name'] = 'cbc' # Controller solver name
+    parameter['controller']['inputs_cutoff'] = 4 # Rounding digits of all inputs
+    parameter['controller']['printing'] = False # Print on error
+    parameter['controller']['solver_options'] = {} # Solver options
+    parameter['controller']['log_dir'] = './logs' # Log dir
+    parameter['controller']['instance_id'] = '1' # Instance ID
+    parameter['controller']['log_overtime'] = 1*60 # Log when over time
 
     parameter['objective'] = {}
     parameter['objective']['weight_energy'] = 1 # Weight of tariff (energy) cost in objective
@@ -90,7 +101,6 @@ def default_parameter():
     parameter['objective']['weight_export'] = 1 # Weight of revenue (export) in objective
     parameter['objective']['weight_regulation'] = 1 # Weight of revenue (regulation) in objective
     parameter['objective']['weight_degradation'] = 1 # Weight of battery degradation cost in objective
-
     parameter['objective']['weight_co2'] = 0 # Weight of co2 emissions (kg) cost in objective
     parameter['objective']['weight_load_shed'] = 1 # Weight of shed load costs ($/kWh)  in objective
     return parameter
@@ -1318,7 +1328,7 @@ def ts_inputs(parameter={}, load='Flexlab', scale_load=4, scale_pv=4):
     #scale = 1
     #scale = 30
     if load == 'Flexlab':
-        data = pd.read_csv(os.path.join(root_dir, 'ExampleData', 'Flexlab.csv'))
+        data = pd.read_csv(os.path.join(ROOT, 'ExampleData', 'Flexlab.csv'))
         data.index = pd.to_datetime(data['Date/Time'].apply(lambda x: '2018/'+x[1:6]+' '+'{:2d}'.format(int(x[8:10])-1)+x[10::]))
         del data.index.name
         data = data[['FLEXLAB-X3-ZONEA:Zone Air Heat Balance System Air Transfer Rate [W](Hourly)']]
