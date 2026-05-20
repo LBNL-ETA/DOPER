@@ -31,7 +31,11 @@ def install_solvers():
     solvers_dir = os.path.join(root, 'doper', 'solvers')
 
     if not 'win' in sys.platform:
-        result = sp.call('sh setup_solvers.sh', shell=True, cwd=solvers_dir)
+        clean_result = sp.call(['sh', 'clean_setup_solvers.sh'], cwd=solvers_dir)
+        if clean_result != 0:
+            raise RuntimeError(f'Solver cleanup failed with exit code {clean_result}.')
+
+        result = sp.call(['sh', 'setup_solvers.sh'], cwd=solvers_dir)
     else:
         result = sp.call('setup_solvers.bat', shell=True, cwd=solvers_dir)
 
