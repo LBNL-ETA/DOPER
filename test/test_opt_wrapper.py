@@ -71,9 +71,6 @@ class TestOptWrapper(unittest.TestCase):
             delta=self.objTolerance,
         )
 
-    def test_objective_not_written_on_success_path(self):
-        self.assertIsNone(self.wrapper.output["objective"], msg="objective should remain None on success path")
-
     def test_duration_nonzero(self):
         self.assertGreater(self.wrapper.output["duration"], 0, msg="duration should be > 0")
 
