@@ -44,17 +44,17 @@ def construct_model_function():
         def objective_function(model):
             obj = 0
             weights = parameter['objective']
-            if 'weight_energy' in weights:
+            if weights.get('weight_energy', False):
                 obj += model.sum_energy_cost * weights['weight_energy']
-            if 'weight_demand' in weights:
+            if weights.get('weight_demand', False):
                 obj += model.sum_demand_cost * weights['weight_demand']
-            if 'weight_export' in weights:
+            if weights.get('weight_export', False):
                 obj += model.sum_export_revenue * weights['weight_export']
-            if 'weight_fuel' in weights:
+            if weights.get('weight_fuel', False):
                 obj += model.fuel_cost_total * weights['weight_fuel']
-            if 'weight_load_shed' in weights:
+            if weights.get('weight_load_shed', False):
                 obj += model.load_shed_cost_total * weights['weight_load_shed']
-            if 'weight_co2' in weights:
+            if weights.get('weight_co2', False):
                 obj += model.co2_total * weights['weight_co2']
             return obj
         model.objective = Objective(rule=objective_function,
