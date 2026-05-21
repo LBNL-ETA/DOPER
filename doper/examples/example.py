@@ -96,13 +96,13 @@ def default_parameter():
 
     parameter['objective'] = {}
     parameter['objective']['weight_energy'] = 1 # Weight of tariff (energy) cost in objective
-    parameter['objective']['weight_fuel'] = 1 # Weight of fuel (energy) cost in objective
+    parameter['objective']['weight_fuel'] = 0 # Weight of fuel (energy) cost in objective
     parameter['objective']['weight_demand'] = 1 # Weight of tariff (demand) cost in objective
-    parameter['objective']['weight_export'] = 1 # Weight of revenue (export) in objective
-    parameter['objective']['weight_regulation'] = 1 # Weight of revenue (regulation) in objective
-    parameter['objective']['weight_degradation'] = 1 # Weight of battery degradation cost in objective
+    parameter['objective']['weight_export'] = 0 # Weight of revenue (export) in objective
+    parameter['objective']['weight_regulation'] = 0 # Weight of revenue (regulation) in objective
+    parameter['objective']['weight_degradation'] = 0 # Weight of battery degradation cost in objective
     parameter['objective']['weight_co2'] = 0 # Weight of co2 emissions (kg) cost in objective
-    parameter['objective']['weight_load_shed'] = 1 # Weight of shed load costs ($/kWh)  in objective
+    parameter['objective']['weight_load_shed'] = 0 # Weight of shed load costs ($/kWh)  in objective
     return parameter
 
 def parameter_add_battery(parameter=None):

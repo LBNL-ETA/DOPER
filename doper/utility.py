@@ -439,13 +439,24 @@ def mapExternalGen(parameter, data, model):
     return ext_power_dict
 
 def update_nested_dict(base, updates):
-    """Recursively update dict values with nested keys."""
+    """Recursively update dict/list values while preserving unspecified items."""
     for key, value in updates.items():
         if isinstance(value, dict):
-            if key not in base or not isinstance(base.get(key), dict):
-                base[key] = deepcopy(value)
-            else:
+            if key in base and isinstance(base[key], dict):
                 update_nested_dict(base[key], value)
+            else:
+                base[key] = deepcopy(value)
+        elif isinstance(value, list):
+            if key in base and isinstance(base[key], list):
+                for i, item in enumerate(value):
+                    if i >= len(base[key]):
+                        base[key].append(deepcopy(item))
+                    elif isinstance(item, dict) and isinstance(base[key][i], dict):
+                        update_nested_dict(base[key][i], item)
+                    else:
+                        base[key][i] = deepcopy(item)
+            else:
+                base[key] = deepcopy(value)
         else:
             base[key] = value
 
