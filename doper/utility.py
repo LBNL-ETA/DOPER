@@ -207,10 +207,28 @@ def get_solver(solver, solver_dir=None):
 
 def check_solver(solver='cbc'):
     sol = get_solver(solver)
-    if not os.path.exists(sol):
-        logging.warning(f'The default "cbc" solver was not properly installed at "{sol}". ' \
-                        + 'Need to manually set the "solver_path" and "solver_name" ' \
+    if os.path.exists(sol):
+        return
+
+    logging.info(f'The default "{solver}" solver was not properly installed at "{sol}". '
+                    + 'Attempting automatic solver setup.')
+
+    try:
+        from .solvers.install import install_solvers
+        install_solvers()
+    except Exception as e:
+        logging.warning(f'Automatic solver setup failed due to: {e}. '
+                        + 'Need to manually set the "solver_path" and "solver_name" '
                         + 'when calling DOPER.')
+        return
+
+    sol = get_solver(solver)
+    if not os.path.exists(sol):
+        logging.warning(f'Automatic solver setup completed, but solver "{solver}" was still '
+                        + f'not found at "{sol}". Need to manually set the "solver_path" '
+                        + 'and "solver_name" when calling DOPER.')
+        
+    logging.info(f'The solver was installed.')
 
 def extract_properties(parameter, tech_name, prop_name, set_list=None):
     '''

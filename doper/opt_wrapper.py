@@ -139,10 +139,9 @@ class DoperWrapper(eFMU):
         # write outputs
         self.output["output-data"] = data
         self.output["valid"] = bool(objective)
-        if msg:
-            self.output["objective"] = float(objective) if objective is not None else None
-            self.output["opt-duration"] = float(duration) if duration is not None else None
-            self.output["termination"] = str(termination)
+        self.output["objective"] = float(objective) if objective is not None else None
+        self.output["opt-duration"] = float(duration) if duration is not None else None
+        self.output["termination"] = str(termination)
         self.output["duration"] = time.time() - st
 
         if not msg:
