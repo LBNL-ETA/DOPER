@@ -13,6 +13,7 @@ Wrapper module.
 # pylint: disable=too-many-locals, wrong-import-order
 
 import os
+import json
 import copy
 import logging
 from time import time
@@ -208,6 +209,59 @@ class DOPER:
         self.results_df = df
         return df
 
+    def dump_model(self, log_path='./', log_name='doper_data1'):
+        '''
+            Dump optimization inputs.
+
+            Input
+            -----
+                log_path (str): Directory to save dump files. (default='./')
+                log_name (str): Base name for dump files. (default='doper_data1')
+
+            Returns
+            -------
+                dict: Paths of generated files.
+        '''
+        os.makedirs(log_path, exist_ok=True)
+
+        parameter_path = os.path.join(log_path, f'{log_name}.json')
+        data_path = os.path.join(log_path, f'{log_name}.csv')
+
+        # parameter
+        with open(parameter_path, 'w', encoding='utf-8') as f:
+            f.write(json.dumps(self.parameter))
+
+        # input data
+        self.data.to_csv(data_path)
+
+        return {'parameter_path': parameter_path, 'data_path': data_path}
+
+    def load_model(self, log_path='./', log_name='doper_data1'):
+        '''
+            Load optimization inputs.
+
+            Input
+            -----
+                log_path (str): Directory containing dump files. (default='./')
+                log_name (str): Base name for dump files. (default='doper_data1')
+
+            Returns
+            -------
+                dict: Paths of loaded files.
+        '''
+        parameter_path = os.path.join(log_path, f'{log_name}.json')
+        data_path = os.path.join(log_path, f'{log_name}.csv')
+
+        # parameter
+        with open(parameter_path, 'r', encoding='utf-8') as f:
+            self.parameter = json.loads(f.read())
+
+        # input data
+        self.data = pd.read_csv(data_path, index_col=0)
+        self.data.index = pd.to_datetime(self.data.index)
+
+        return {'parameter_path': parameter_path, 'data_path': data_path}
+
     def do_optimization(self, data, parameter=None, tee=False, keepfiles=False,
                         report_timing=False, options={}, print_error=True,
                         other_valid_terminations=[TerminationCondition.maxTimeLimit],
@@ -239,9 +293,10 @@ class DOPER:
         if parameter:
             # Update parameter, if supplied
             self.parameter = copy.deepcopy(parameter)
+        self.data = copy.deepcopy(data)
         #if not self.model_loaded:
         # Instantiate the model, if not already
-        self.initialize_model(data)
+        self.initialize_model(self.data)
         with SolverFactory(self.solver_name, executable=self.solver_path) as solver:
             t_start = time()
             for k in options.keys():
