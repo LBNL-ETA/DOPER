@@ -26,6 +26,8 @@ The following fields may be included if certain features of the model (e.g. elec
 * `grid_available`: binary indicating whether grid connection is available. If not provided, defaults to 1-grid always available
 * `fuel_available`: binary indicating whether fuel import is available. If not provided, defaults to 1-fuel import always available
 * `grid_co2_intensity`: current CO2 intensity of grid imports [kg/kWh]. If not provided, defaults to 0. If carbon values are included in the optimization objective, a warning will be raised
+* `import_max`: optional time-varying site import capacity [kW]. If not provided, the static value from `parameter['site']['import_max']` is used for all timesteps.
+* `export_max`: optional time-varying site export capacity [kW]. If not provided, the static value from `parameter['site']['export_max']` is used for all timesteps.
 
 ##### 1.3. DER-specific Fields
 
@@ -56,6 +58,8 @@ The following fields may be included if certain features of the model (e.g. elec
 * `grid_available`: binary indicating whether grid connection is available. If not provided, defaults to 1-grid always available
 * `fuel_available`: binary indicating whether fuel import is available. If not provided, defaults to 1-fuel import always available
 * `grid_co2_intensity`: current CO2 intensity of grid imports [kg/kWh]. If not provided, defaults to 0. If carbon values are included in the optimization objective, a warning will be raised
+* `import_max`: optional time-varying site import capacity [kW]. If not provided, the static value from `parameter['site']['import_max']` is used for all timesteps.
+* `export_max`: optional time-varying site export capacity [kW]. If not provided, the static value from `parameter['site']['export_max']` is used for all timesteps.
 
 ##### 2.3. Node-specifc Fields
 

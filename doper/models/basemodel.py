@@ -99,6 +99,21 @@ def base_model(inputs, parameter):
                                         doc='preset demand [kW]')
     model.pv_max_s = Param(model.nodes, initialize=0, mutable=True, \
                             doc='pv inv max apparent power [kVA]')
+    # dynamic import/export limits
+    dynamic_import_max = unpack_ts_input(inputs, 'import_max', parameter['site']['import_max'])
+    if isinstance(dynamic_import_max, dict):
+        dynamic_import_max_ub = max(dynamic_import_max.values())
+    else:
+        dynamic_import_max_ub = dynamic_import_max
+    model.dynamic_import_max = Param(model.ts, initialize=dynamic_import_max, \
+                             doc='site grid import max [kW]')
+    dynamic_export_max = unpack_ts_input(inputs, 'export_max', parameter['site']['export_max'])
+    if isinstance(dynamic_export_max, dict):
+        dynamic_export_max_ub = max(dynamic_export_max.values())
+    else:
+        dynamic_export_max_ub = dynamic_export_max
+    model.dynamic_export_max = Param(model.ts, initialize=dynamic_export_max, \
+                             doc='site grid export max [kW]')
 
 
     # Unpack time-series inputs
@@ -240,11 +255,11 @@ def base_model(inputs, parameter):
     model.actual_generation_pv = Var(model.ts, model.nodes, bounds=(0, None), doc='actual pv generation after curtailment (islanded only) [kW]')
     model.generation_pv_curtailed = Var(model.ts, model.nodes, bounds=(0, None), doc='curtailed pv power [kW]')
     
-    model.grid_import_site = Var(model.ts, bounds=(0, parameter['site']['import_max']), doc='site total grid import [kW]')
-    model.grid_export_site = Var(model.ts, bounds=(0, parameter['site']['export_max']), doc='site total grid export [kW]')
+    model.grid_import_site = Var(model.ts, bounds=(0, dynamic_import_max_ub), doc='site total grid import [kW]')
+    model.grid_export_site = Var(model.ts, bounds=(0, dynamic_export_max_ub), doc='site total grid export [kW]')
     
-    model.grid_import = Var(model.ts, model.nodes, bounds=(0, parameter['site']['import_max']), doc='grid import at each node [kW]')
-    model.grid_export = Var(model.ts, model.nodes,bounds=(0, parameter['site']['export_max']), doc='grid export at each node [kW]')
+    model.grid_import = Var(model.ts, model.nodes, bounds=(0, dynamic_import_max_ub), doc='grid import at each node [kW]')
+    model.grid_export = Var(model.ts, model.nodes,bounds=(0, dynamic_export_max_ub), doc='grid export at each node [kW]')
     
     model.demand_charge_periods = Var(model.periods, bounds=(0, None), doc='maximal demand [kW,periods]')
     model.demand_charge_overall = Var(bounds=(0, None), doc='maximal demand [kW]')
@@ -347,12 +362,12 @@ def base_model(inputs, parameter):
         
     # grid outage constraints   
     def outage_import(model, ts, nodes):
-        return model.grid_import[ts, nodes] <= model.grid_available[ts] * parameter['site']['import_max']
+        return model.grid_import[ts, nodes] <= model.grid_available[ts] * model.dynamic_import_max[ts]
     model.constraint_outage_import = Constraint(model.ts, model.nodes, rule=outage_import, \
                                                   doc='constraint outage import')
                                                   
     def outage_export(model, ts, nodes):
-        return model.grid_export[ts, nodes] <= model.grid_available[ts] * parameter['site']['export_max']
+        return model.grid_export[ts, nodes] <= model.grid_available[ts] * model.dynamic_export_max[ts]
     model.constraint_outage_export = Constraint(model.ts, model.nodes, rule=outage_export, \
                                                   doc='constraint outage export')
  
@@ -436,17 +451,17 @@ def base_model(inputs, parameter):
     model.constraint_demand_overall = Constraint(model.ts, rule=demand_maximum_overall, doc='constraint demand overall')
     
     def limit_physical_import(model, ts):
-        return model.grid_import_site[ts] <= parameter['site']['import_max']
+        return model.grid_import_site[ts] <= model.dynamic_import_max[ts]
     model.constraint_limit_physical_import = Constraint(model.ts, rule=limit_physical_import, \
                                                         doc='constraint grid import limit')
 
     # Grid Import XOR Export
     def grid_import_XOR_export(model, ts, nodes):
-        return model.grid_import[ts, nodes] <=  model.grid_importXORexport[ts] * parameter['site']['import_max']
+        return model.grid_import[ts, nodes] <=  model.grid_importXORexport[ts] * model.dynamic_import_max[ts]
     model.constraint_grid_import_XOR_export = Constraint(model.ts, model.nodes, rule=grid_import_XOR_export, \
                                                          doc='grid import xor export')  
     def grid_export_XOR_import(model, ts, nodes):
-        return model.grid_export[ts, nodes] <=  (1 - model.grid_importXORexport[ts]) * parameter['site']['import_max']
+        return model.grid_export[ts, nodes] <=  (1 - model.grid_importXORexport[ts]) * model.dynamic_export_max[ts]
     model.constraint_grid_export_XOR_import = Constraint(model.ts, model.nodes, rule=grid_export_XOR_import, \
                                                          doc='grid export xor import')  
 

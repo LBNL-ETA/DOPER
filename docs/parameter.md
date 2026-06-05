@@ -70,8 +70,8 @@ The content of `parameter['site']` is as follows:
 - `customer`: [str] Type of customer [commercial or none]; decides if demand charges.
 - `demand_coincident_prev`: [int] Peak previously set for coincident, in kW.
 - `demand_periods_prev`: [list] Peak previously set for periods 0-offpeak, 1-midpeak, 2-onpeak, in kW.
-- `export_max`: [int] Minimal import capacity, in kW.
-- `import_max`: [int] Maximal import capacity, in kW.
+- `export_max`: [float] Maximum site export capacity, in kW, used as the default if no timeseries `export_max` input is provided.
+- `import_max`: [float] Maximum site import capacity, in kW, used as the default if no timeseries `import_max` input is provided.
 - `input_timezone`: [float] Timezone of inputs, in hourly offset from UTC.
 - `local_timezone`: [str] Local timezone of tariff, in Python timezone string.
 - `regulation`: [bool] Enables or disables the regulation bidding.
@@ -83,6 +83,8 @@ The content of `parameter['site']` is as follows:
 - `regulation_reserved_variable_battery`: [bool] Flag to reserve battery capacity for regulation (variable ts).
 - `regulation_xor`: [bool] Only allows bids for regup or regdown per timestep.
 - `regulation_xor_building`: [bool] For each battery only allow regulation or building support.
+
+Note on dynamic grid limits: site import/export limits can be provided as optional timeseries input columns (`import_max`, `export_max`). When those columns are present in `input`, they override the static `parameter['site']['import_max']` and `parameter['site']['export_max']` values on a per-timestep basis.
 
 ---
 
