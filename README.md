@@ -101,10 +101,12 @@ The time-series input should be in the form of a pandas dataframe, indexed by ti
 * `fuel_available`: binary indicating whether fuel import is available
 * `grid_co2_intensity`: current CO2 intensity of grid imports [kg/kWh]
 * `generation_pv`: output of all PV connected to system [kW]
-* `battery_N_avail`: binary indicating whether battery N is connected to system (e.g. for EVs)
-* `battery_N_demand`: external discharging load for battery N (e.g. for EVs) [kW]
+* `battery_{name}_avail`: binary indicating whether battery `{name}` is connected to system (e.g. for EVs)
+* `battery_{name}_demand`: external discharging load for battery `{name}` (e.g. for EVs) [kW]
 * `load_shed_potential_N`: volume of load sheddable under load control resource N [kW]
 * `external_gen`: generation available from generic external generation source [kW]
+* `import_max`: optional time-varying site import capacity [kW]
+* `export_max`: optional time-varying site export capacity [kW]
 
 The required columns will vary between single-node and multi-node models. Please refer to documentation on [Defining Time-series Input Object](https://github.com/LBNL-ETA/DOPER/blob/master/docs/input.md) for details on required and optional fields that may be passed to the model using the timeseries input object.
 

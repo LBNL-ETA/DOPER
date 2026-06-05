@@ -18,7 +18,7 @@ from fmlc import eFMU
 
 from .computetariff import compute_periods
 from .data.tariff import get_tariff
-from .utility import update_nested_dict
+from .utility import update_nested_dict, resolve_wrapper_callable
 from .wrapper import make_doper
 
 class DoperWrapper(eFMU):
@@ -40,6 +40,7 @@ class DoperWrapper(eFMU):
             "termination": None,
             "duration": None,
             "valid": None,
+            "setpoints": None,
         }
         self.init = True
         self.parameter = None
@@ -75,6 +76,7 @@ class DoperWrapper(eFMU):
         duration = None
         termination = None
         df = None
+        setpoints = {}
 
         msg += self.check_data(self.input["input-data"], True)
 
@@ -92,6 +94,12 @@ class DoperWrapper(eFMU):
                     # init doper
                     self.smart_der = make_doper(cfg)
                     self.parameter = self.smart_der.parameter
+
+                    # setpoint processor
+                    self.sp_processor = resolve_wrapper_callable(
+                        self.parameter['controller']['sp_processor'],
+                        spec_name='sp_processor'
+                    )
 
                     self.init = False
 
@@ -123,7 +131,13 @@ class DoperWrapper(eFMU):
 
                 # store outputs
                 if isinstance(df, pd.DataFrame):
-                    data = pd.concat([df, data], axis=1).to_json()
+                    data = pd.concat([df, data], axis=1)
+
+                    # process setpoints
+                    if self.sp_processor:
+                        setpoints = self.sp_processor(data, self.parameter)
+
+                    data = data.to_json()
 
                 # Store if error or timeout
                 opt_timeout = duration > self.parameter['controller']['log_overtime']
@@ -142,6 +156,7 @@ class DoperWrapper(eFMU):
         self.output["objective"] = float(objective) if objective is not None else None
         self.output["opt-duration"] = float(duration) if duration is not None else None
         self.output["termination"] = str(termination)
+        self.output["setpoints"] = setpoints
         self.output["duration"] = time.time() - st
 
         if not msg:

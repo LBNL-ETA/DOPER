@@ -1,9 +1,21 @@
 import json
 import unittest
+from io import StringIO
+
+import pandas as pd
 
 import doper.examples as example
 
 from doper.opt_wrapper import DoperWrapper
+
+
+def pv_sp_processor(data, parameter):
+    """Extract predicted next PV power setpoint from output-data dataframe."""
+    return {
+        "pv": {
+            "predicted_next_power_kW": float(data["PV Power [kW]"].iloc[0])
+        }
+    }
 
 
 class TestOptWrapper(unittest.TestCase):
@@ -28,6 +40,10 @@ class TestOptWrapper(unittest.TestCase):
         # Use same input generation as test_basemodel.py
         cfg = example.test_default_parameter()
         cfg['site']['tariff_name'] = 'test1'
+        cfg['controller']['sp_processor'] = {
+            "module": "test.test_opt_wrapper",
+            "name": "pv_sp_processor",
+        }
         data = example.ts_inputs(cfg, load="B90", scale_load=150, scale_pv=100)
         forecast_json = data.to_json(date_format="iso")
 
@@ -73,6 +89,23 @@ class TestOptWrapper(unittest.TestCase):
 
     def test_duration_nonzero(self):
         self.assertGreater(self.wrapper.output["duration"], 0, msg="duration should be > 0")
+
+    def test_pv_setpoint_is_output_and_matches_output_data(self):
+        setpoints = self.wrapper.output["setpoints"]
+        self.assertIsInstance(setpoints, dict, msg="setpoints should be a dict")
+        self.assertIn("pv", setpoints, msg="setpoints should contain pv key")
+        self.assertIn("predicted_next_power_kW", setpoints["pv"], msg="pv setpoint should be present")
+
+        output_df = pd.read_json(StringIO(self.wrapper.output["output-data"]))
+        output_df.index = pd.to_datetime(output_df.index)
+        expected_setpoint = float(output_df["PV Power [kW]"].iloc[0])
+
+        self.assertAlmostEqual(
+            float(setpoints["pv"]["predicted_next_power_kW"]),
+            expected_setpoint,
+            places=6,
+            msg="pv setpoint should match output-data PV Power [kW] at first timestep",
+        )
 
 
 if __name__ == "__main__":

@@ -93,6 +93,8 @@ def default_parameter():
     parameter['controller']['log_dir'] = './logs' # Log dir
     parameter['controller']['instance_id'] = '1' # Instance ID
     parameter['controller']['log_overtime'] = 1*60 # Log when over time
+    parameter['controller']['sp_processor'] = None # optional sp-processor {"module": "my_module", "name": "my_sp_processor"}
+    # expected signature: my_sp_processor(data, parameter) -> setpoints as dict
 
     parameter['objective'] = {}
     parameter['objective']['weight_energy'] = 1 # Weight of tariff (energy) cost in objective

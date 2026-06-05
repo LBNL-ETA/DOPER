@@ -40,7 +40,31 @@ The content of `parameter['controller']` is as follows:
 
 * `timestep` [int] controller timestep in seconds
 * `horizon` [int] controller horizon in seconds
-* `solver_dir` [str] path to sub-directory containing solvers
+* `solver_path` [str] path to sub-directory containing solvers
+* `solver_name` [str] solver name (default: `cbc`)
+* `inputs_cutoff` [int] rounding digits of all inputs
+* `printing` [bool] print on error
+* `solver_options` [dict] solver options
+* `log_dir` [str] path to logging directory
+* `instance_id` [str] instance identifier
+* `log_overtime` [int] log when solve time exceeds this value (seconds)
+* `sp_processor` [dict or None] optional post-processing callable used by `DoperWrapper` to parse optimization outputs into `output['setpoints']`.
+  * `None` disables setpoint post-processing.
+  * If provided, must be:
+    * `module` [str] import path to Python module
+    * `name` [str] callable name in the module
+  * Expected callable signature:
+    * `sp_processor(output_data_df, parameter) -> dict`
+    * where `output_data_df` is a pandas DataFrame containing merged optimization results and input/forecast data before JSON serialization.
+  * The returned dict is written to wrapper output key `setpoints`.
+
+Example:
+```python
+parameter['controller']['sp_processor'] = {
+    'module': 'my_package.my_setpoints',
+    'name': 'my_sp_processor',
+}
+```
 
 ---
 
@@ -69,14 +93,15 @@ The content of `parameter['site']` is as follows:
 
 - `customer`: [str] Type of customer [commercial or none]; decides if demand charges.
 - `demand_coincident_prev`: [int] Peak previously set for coincident, in kW.
-- `demand_periods_prev`: [list] Peak previously set for periods 0-offpeak, 1-midpeak, 2-onpeak, in kW.
+- `demand_periods_prev`: [dict] Peak previously set for periods 0-offpeak, 1-midpeak, 2-onpeak, in kW.
 - `export_max`: [float] Maximum site export capacity, in kW, used as the default if no timeseries `export_max` input is provided.
 - `import_max`: [float] Maximum site import capacity, in kW, used as the default if no timeseries `import_max` input is provided.
 - `input_timezone`: [float] Timezone of inputs, in hourly offset from UTC.
 - `local_timezone`: [str] Local timezone of tariff, in Python timezone string.
+- `tariff_name`: [str] Tariff name.
 - `regulation`: [bool] Enables or disables the regulation bidding.
 - `regulation_all`: [bool] All batteries must participate in regulation.
-- `regulation_min`: [int] Minimal regulation bid.
+- `regulation_min`: [int or None] Minimal regulation bid.
 - `regulation_reserved`: [bool] Flag to reserve site capacity for regulation.
 - `regulation_reserved_battery`: [bool] Flag to reserve battery capacity for regulation.
 - `regulation_symmetric`: [bool] Symmetric bidding into regulation market.

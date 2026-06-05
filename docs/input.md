@@ -33,8 +33,8 @@ The following fields may be included if certain features of the model (e.g. elec
 
 The following fields may be included if certain DER assets and features are to be used during the model. Note, some items are optional and some required for a given DER asset type, as indicated below.
 
-* `battery_N_avail`: binary indicating whether battery N is connected to system. Optional input to model an EV as a battery. If missing, asset is treated as a stationary battery
-* `battery_N_demand`: external discharging load for battery N [kW]. Optional input to model an EV as a battery. If missing, asset is treated as a stationary battery
+* `battery_{name}_avail`: binary indicating whether battery `{name}` is connected to system. Optional input to model an EV as a battery. If missing, asset is treated as a stationary battery
+* `battery_{name}_demand`: external discharging load for battery `{name}` [kW]. Optional input to model an EV as a battery. If missing, asset is treated as a stationary battery
 * `load_shed_potential_X`: volume of load sheddable under load control resource with the name field set to 'X' [kW]. If load control is enabled for a model, the corresponding load_shed_potential field must be included in the input data. Number of load control assets must match the number of shed potential profiles. Missing items will generate an error.
 * `external_gen`: generation available from generic external generation source [kW]. If `parameter['system']['external_gen']` is set to `True`, then this field must be included in the input data
 
@@ -72,8 +72,8 @@ The following fields should be included for some or all nodes of a multi-node mo
 
 The following fields may be included if certain DER assets and features are to be used during the model. Note, some items are optional and some required for a given DER asset type, as indicated below.
 
-* `battery_N_avail`: binary indicating whether battery N is connected to system. Optional input to model an EV as a battery. If missing, asset is treated as a stationary battery
-* `battery_N_demand`: external discharging load for battery N [kW]. Optional input to model an EV as a battery. If missing, asset is treated as a stationary battery
+* `battery_{name}_avail`: binary indicating whether battery `{name}` is connected to system. Optional input to model an EV as a battery. If missing, asset is treated as a stationary battery
+* `battery_{name}_demand`: external discharging load for battery `{name}` [kW]. Optional input to model an EV as a battery. If missing, asset is treated as a stationary battery
 * `load_shed_potential_X`: volume of load sheddable under load control resource with the name field set to 'X' [kW]. If load control is enabled for a model, the corresponding load_shed_potential field must be included in the input data. Number of load control assets must match the number of shed potential profiles. Missing items will generate an error.
 * `external_gen`: generation available from generic external generation source [kW]. If `parameter['system']['external_gen']` is set to `True`, then this field must be included in the input data
 
