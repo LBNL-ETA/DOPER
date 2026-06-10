@@ -13,6 +13,45 @@ Plotting module.
 import numpy as np
 import matplotlib.pyplot as plt
 
+def plot_streams(axs, temp, title=None, ylabel=None, legend=False, loc=1, times=[8,12,18,22]):
+    '''
+        Utility to simplify plotting of subplots.
+
+        Input
+        -----
+            axs (matplotlib.axes._subplots.AxesSubplot): The axis to be plotted.
+            temp (pandas.Series): The stream to be plotted.
+            title (str): Title of the plot. (default = None)
+            ylabel (str): Label for y-axis. (default = None)
+            legend (bool): Show legend in plot. (default = False)
+            loc (int): Location of legend. (default = 1)
+            times (list): List of tariff times. Four elements. (default = [8,12,18,22])
+    '''
+    axs.plot(temp)
+    axs.legend(temp.columns, loc=2)
+    if times:
+        idx0 = temp.index[temp.index.minute==0]
+        if times[0] is not None:
+            axs.plot([idx0[idx0.hour==times[0]],idx0[idx0.hour==times[0]]],
+                      [temp.values.min(),temp.values.max()], color='orange', linestyle=':')
+        if times[1] is not None:
+            axs.plot([idx0[idx0.hour==times[1]],idx0[idx0.hour==times[1]]],
+                      [temp.values.min(),temp.values.max()], color='red', linestyle=':')
+        if times[2] is not None:
+            axs.plot([idx0[idx0.hour==times[2]],idx0[idx0.hour==times[2]]],
+                      [temp.values.min(),temp.values.max()], color='red', linestyle=':')
+        if times[3] is not None:
+            axs.plot([idx0[idx0.hour==times[3]],idx0[idx0.hour==times[3]]],
+                      [temp.values.min(),temp.values.max()], color='orange', linestyle=':')
+        if temp.values.min() < 0 and temp.values.max() > 0:
+            axs.plot([idx0[0],idx0[-1]],[0,0], color='black', linestyle=':')
+    if title:
+        axs.set_title(title)
+    if ylabel:
+        axs.set_ylabel(ylabel)
+    if legend:
+        axs.legend(legend, loc=loc)
+
 def plot_dynamic_nodes(df, parameter, plotFile = None):
     '''
         A standard plotting template to present results.
