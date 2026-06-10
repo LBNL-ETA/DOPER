@@ -25,7 +25,8 @@ def get_root(f=None):
     return root
 root = get_root()
 
-from ..utility import pandas_to_dict, pyomo_read_parameter, plot_streams, get_root, extract_properties
+from ..utility import pandas_to_dict, pyomo_read_parameter, get_root, extract_properties
+from ..plotting import plot_streams
 
 def add_battery(model, inputs, parameter):
     
