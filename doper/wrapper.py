@@ -337,7 +337,7 @@ def make_doper(cfg):
     # output list
     output_list = default_output_list(parameter)
     if parameter.get("controller", {}).get("output_list"):
-        output_list.update(parameter["controller"]["output_list"])
+        output_list.extend(parameter["controller"]["output_list"])
 
     #solver path
     solver_path = get_solver(parameter['controller']['solver_name'],
