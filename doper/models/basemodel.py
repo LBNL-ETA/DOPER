@@ -1,12 +1,11 @@
-#!/usr/bin/env python
-'''
-    INTERNAL USE ONLY
-    Module of DOPER package (v1.0)
-    cgehbauer@lbl.gov
+# Distributed Optimal and Predictive Energy Resources (DOPER) Copyright (c) 2019
+# The Regents of the University of California, through Lawrence Berkeley
+# National Laboratory (subject to receipt of any required approvals
+# from the U.S. Dept. of Energy). All rights reserved.
 
-    Version info (v1.0):
-        -) Initial disaggregation of old code.
-'''
+""""Distributed Optimal and Predictive Energy Resources
+Base model module.
+"""
 import os
 import sys
 import numpy as np

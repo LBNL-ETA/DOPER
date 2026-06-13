@@ -2,7 +2,7 @@
 
 The `parameter` input consists of data used to characterize the system being optimized by the controller. In general, the data contained inside `parameter` is static and does not change between subsequent iterations of the optimization. The `parameter` object is a python dict contain sub dict and list objects. The structure and content of each of the compoents is outlined below:
 
- * `system`: [dict] high level information defining with DER asset types and features are to be included or enabled within the model.
+ * `system`: [dict] high level information defining which DER asset types and features are to be included or enabled within the model.
  * `controller` [dict] settings data for the optimization proces
  * `objective` [dict] weights applied to different components of the optimization objective function
  * `site` [dict] general site characteristics like previous demand levels, regulation participation, etc. Note: these items may be refactored into more descriptive categories
@@ -23,6 +23,7 @@ The content of `parameter['system']` is as follows:
 
 * `pv` [bool] option to enable pv generation within model
 * `battery` [bool] option to enable battery or EV assets within model
+* `ev` [bool] option to enable EV-specific constraints and revenue/cost terms (requires `battery` to also be enabled). Activates the `add_ev` module which enforces minimum leaving-SOC constraints and computes EV charging revenue and discharging cost model variables.
 * `genset` [bool] option to enable generator assets within model
 * `load_control` [bool] option to enable controllable load shedding within model
 * `external_gen` [bool] option to enable generic external generation sources within model
@@ -82,6 +83,8 @@ The content of `parameter['objective']` is as follows:
 * `weight_degradation` [int] weight applied to battery degradation costs
 * `weight_co2` [int] weight applied to CO2 [in kg] emissions
 * `weight_load_shed` [int] weight applied to load shed unserved energy costs
+* `weight_ev_charging` [float] weight applied to EV charging revenue (`model.ev_charging_revenue`). The revenue term is subtracted from the objective, so a positive weight reduces cost when the EV is net-charged during a session. Only has effect when `parameter['system']['ev']` is enabled.
+* `weight_ev_discharging` [float] weight applied to EV discharging cost (`model.ev_discharging_cost`). The cost term is added to the objective, penalising total accumulated discharge energy. Only has effect when `parameter['system']['ev']` is enabled.
 
 ---
 
@@ -266,14 +269,58 @@ parameter['batteries'] = [
 
 #### 10. Defining an electric vehicle (EV) asset in `parameter['batteries']`
 
-In the optimization model, EVs can be modeled using the same structure as stationary batteries. To model an EV, define its battery properties as described above. To capture the expected availability of the EV battery, and its power demand related for trips. Include the following columns in the timeseries `input` dataframe:
+In the optimization model, EVs can be modeled using the same structure as stationary batteries. To model an EV, define its battery properties as described above. To capture the expected availability of the EV battery and its power demand for trips, include the following columns in the timeseries `input` dataframe:
 
-* `battery_{name}_avail` [bool] indicates when EV is connected to on-site charging station
-* `battery_{name}_demand` [float] power demand to serve transport requirements within each timestep.
+* `battery_{name}_avail` [int, 0 or 1] availability signal indicating when EV is connected to the on-site charging station (1 = connected, 0 = driving)
+* `battery_{name}_demand` [float] power demand to serve transport requirements within each timestep [kW]
 
-Where `{name}` corresponds to the battery name listed in the EV's battery definition. If the demand and availability columns are not found in 'input', then the battery will be modeled as a stationary asset.
+Where `{name}` corresponds to the battery name listed in the EV's battery definition. If the demand and availability columns are not found in `input`, the battery will be modeled as a stationary asset with full availability.
 
-## Note: should battery asset contain EV flag and assertion to check availability and demand columns exist? Currently, small errors could result in EVs being treated as regular batteries without clear warning to user.
+##### EV-specific parameters (used by `add_ev` when `parameter['system']['ev']` is enabled)
+
+The following optional parameters can be added to each battery dict to control EV-specific behaviour:
+
+* `min_leaving_soc` [True | float | False] minimum state-of-charge enforced at each departure (1→0 transition in `battery_avail`).
+  * `True` — battery energy at departure must be ≥ battery energy when the EV was plugged in (0→1 transition, or the start of the horizon if the EV is already connected). This constraint is only added when the EV is connected at the start of the optimization horizon **and** its availability changes state at least once during the horizon. Subsequent plug-in / plug-out cycles within the horizon are always constrained.
+  * `float` — battery energy at departure must be ≥ `min_leaving_soc × capacity` [kWh].
+  * `False` — no minimum leaving-SOC constraint is applied.
+* `min_added_soc` [float, default 0] additional SOC fraction (of capacity) added to the leaving-SOC constraint energy floor. Ignored when `min_leaving_soc` is `False`.
+* `charging_revenue` [float, default 0] revenue rate for net energy added to the EV during each plug-in session [$/kWh]. The model computes `battery_ev_charging_revenue[b] = rate × Σ(E_departure − E_arrival)` over all complete sessions and sums these into `model.ev_charging_revenue`. A positive value creates an incentive to charge the vehicle.
+* `discharging_cost` [float, default 0] cost rate applied to the total accumulated discharge energy of the EV over the full optimization horizon [$/kWh]. The model computes `battery_ev_discharging_cost[b] = rate × Σ(discharge_grid_power / timestep_scale)` and sums these into `model.ev_discharging_cost`. A positive value penalises vehicle-to-grid (V2G) discharge.
+
+##### Model variables added by `add_ev`
+
+When `parameter['system']['ev']` is `True`, the following Pyomo variables are added to the model:
+
+* `model.battery_ev_charging_revenue[b]` — per-battery charging revenue [$]
+* `model.ev_charging_revenue` — aggregate charging revenue across all batteries [$]
+* `model.battery_ev_discharging_cost[b]` — per-battery discharging cost [$]
+* `model.ev_discharging_cost` — aggregate discharging cost across all batteries [$]
+
+An example EV battery definition with all EV-specific parameters:
+
+```python
+parameter['batteries'] = [
+    {
+        'name': 'EV1',
+        'capacity': 24,            # kWh
+        'power_charge': 15,        # kW
+        'power_discharge': 15,     # kW
+        'efficiency_charging': 0.96,
+        'efficiency_discharging': 0.96,
+        'soc_min': 0,
+        'soc_max': 1,
+        'soc_initial': 0.75,
+        'self_discharging': 0.003,
+
+        # EV-specific parameters
+        'min_leaving_soc': True,   # energy when leaving >= energy when arrived
+        'min_added_soc': 0,        # no additional SOC requirement
+        'charging_revenue': 0.15,  # $/kWh – earn revenue for net energy charged
+        'discharging_cost': 0.05,  # $/kWh – cost for total V2G discharge energy
+    }
+]
+```
 
 
 ---

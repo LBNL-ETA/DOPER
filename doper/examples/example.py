@@ -24,12 +24,13 @@ def default_parameter():
     parameter = {}
     parameter['system'] = {
         'pv': True,
-        'battery':False,
-        'genset':False,
+        'battery': False,
+        'ev': False,
+        'genset': False,
         'load_control': False,
         'external_gen': False,
         'reg_bidding': False,
-        'reg_response':False,
+        'reg_response': False,
         'hvac_control': False,
     }
 
@@ -105,6 +106,8 @@ def default_parameter():
     parameter['objective']['weight_degradation'] = 0 # Weight of battery degradation cost in objective
     parameter['objective']['weight_co2'] = 0 # Weight of co2 emissions (kg) cost in objective
     parameter['objective']['weight_load_shed'] = 0 # Weight of shed load costs ($/kWh)  in objective
+    parameter['objective']['weight_ev_charging'] = 1 # Weight of EV charging revenue in objective
+    parameter['objective']['weight_ev_discharging'] = 1 # Weight of EV discharging cost in objective
     return parameter
 
 def parameter_add_battery(parameter=None):
@@ -116,11 +119,11 @@ def parameter_add_battery(parameter=None):
     # enable gensets
     parameter['system']['battery'] = True
 
-    # Add genset options
+    # Add battery options
     parameter['batteries'] = [
         {
          'name':'libat01',
-        'capacity': 200,
+         'capacity': 200,
          'degradation_endoflife': 80,
          'degradation_replacementcost': 6000.0,
          'efficiency_charging': 0.96,
@@ -130,13 +133,18 @@ def parameter_add_battery(parameter=None):
          'power_discharge': 50,
          'maxS': 50,
          'self_discharging': 0.0,
-          'soc_final': None,
+         'soc_final': None,
          'soc_initial': 0.65,
          'soc_max': 1,
          'soc_min': 0.2,
          # 'temperature_initial': 22.0,
          'thermal_C': 100000.0,
-         'thermal_R': 0.01
+         'thermal_R': 0.01,
+         # True: energy at departure >= energy at plug-in; float: fixed SOC floor; False: disabled
+         'min_leaving_soc': True,
+         'min_added_soc': 0, # additional SOC added to leaving SOC constraint
+         'charging_revenue': 0, # $/kWh net energy added per session
+         'discharging_cost': 0, # $/kWh total discharge energy over horizon
         }
     ]
     return parameter
@@ -212,7 +220,7 @@ def parameter_add_evfleet(parameter=None):
     # enable gensets
     parameter['system']['battery'] = True
 
-    # Add genset options
+    # Add EV fleet options
     parameter['batteries'] = [
         {
          'name': 'EV1',
@@ -226,7 +234,11 @@ def parameter_add_evfleet(parameter=None):
          # 'soc_final': 0.5,
          'soc_initial': 0.75,
          'soc_max': 1,
-         'soc_min': 0
+         'soc_min': 0,
+         'min_leaving_soc': True,
+         'min_added_soc': 0,
+         'charging_revenue': 0,
+         'discharging_cost': 0,
         },
         {
         'name': 'EV2',
@@ -240,7 +252,11 @@ def parameter_add_evfleet(parameter=None):
          # 'soc_final': 0.5,
          'soc_initial': 0.80,
          'soc_max': 1,
-         'soc_min': 0
+         'soc_min': 0,
+         'min_leaving_soc': True,
+         'min_added_soc': 0,
+         'charging_revenue': 0,
+         'discharging_cost': 0,
         },
         {
         'name': 'EV3',
@@ -254,7 +270,11 @@ def parameter_add_evfleet(parameter=None):
          # 'soc_final': 0.5,
          'soc_initial': 0.75,
          'soc_max': 1,
-         'soc_min': 0
+         'soc_min': 0,
+         'min_leaving_soc': True,
+         'min_added_soc': 0,
+         'charging_revenue': 0,
+         'discharging_cost': 0,
         }
     ]
     return parameter
@@ -857,7 +877,7 @@ def test_default_parameter():
     parameter['objective']['weight_degradation'] = 1 # Weight of battery degradation cost in objective
 
     parameter['objective']['weight_co2'] = 0 # Weight of co2 emissions (kg) cost in objective
-    parameter['objective']['weight_load_shed'] = 1 # Weight of shed load costs ($/kWh)  in objective
+    parameter['objective']['weight_load_shed'] = 0 # Weight of shed load costs ($/kWh)  in objective
     return parameter
 
 def test_parameter_add_battery(parameter=None):
