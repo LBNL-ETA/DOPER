@@ -17,6 +17,8 @@ def _make_ev_parameter(min_leaving_soc=True, min_added_soc=0,
     parameter = example.default_parameter()
     parameter['system']['battery'] = True
     parameter['system']['ev'] = True
+    parameter['objective']['weight_ev_charging'] = 1
+    parameter['objective']['weight_ev_discharging'] = 1
     parameter['batteries'] = [
         {
             'name': 'EV1',

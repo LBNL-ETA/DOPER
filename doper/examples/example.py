@@ -106,8 +106,8 @@ def default_parameter():
     parameter['objective']['weight_degradation'] = 0 # Weight of battery degradation cost in objective
     parameter['objective']['weight_co2'] = 0 # Weight of co2 emissions (kg) cost in objective
     parameter['objective']['weight_load_shed'] = 0 # Weight of shed load costs ($/kWh)  in objective
-    parameter['objective']['weight_ev_charging'] = 1 # Weight of EV charging revenue in objective
-    parameter['objective']['weight_ev_discharging'] = 1 # Weight of EV discharging cost in objective
+    parameter['objective']['weight_ev_charging'] = 0 # Weight of EV charging revenue in objective
+    parameter['objective']['weight_ev_discharging'] = 0 # Weight of EV discharging cost in objective
     return parameter
 
 def parameter_add_battery(parameter=None):
