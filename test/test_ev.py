@@ -36,6 +36,8 @@ def _make_ev_parameter(min_leaving_soc=True, min_added_soc=0,
             'min_added_soc': min_added_soc,
             'charging_revenue': charging_revenue,
             'discharging_cost': discharging_cost,
+            'cycle_cost': 0,
+            'battery_power': 0,
         }
     ]
     return parameter

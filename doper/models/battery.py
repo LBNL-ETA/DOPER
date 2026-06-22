@@ -39,7 +39,8 @@ def add_battery(model, inputs, parameter):
     # list of required genset parameters
     batParams =  ['capacity', 'efficiency_charging', 'efficiency_discharging', 
                      'power_charge', 'power_discharge', 'self_discharging', 
-                     'soc_initial', 'soc_max', 'soc_min']
+                     'soc_initial', 'soc_max', 'soc_min',
+                     'cycle_cost', 'battery_power']
     # check that all gensets have required parameters
     for bb in range(0, len(parameter['batteries'])):
         for pp in batParams:
@@ -129,6 +130,13 @@ def add_battery(model, inputs, parameter):
         # if missing, just use max P
         model.bat_max_s = Param(model.batteries, initialize=extract_properties(parameter, 'batteries', 'power_charge', batteryListInput), \
                                 doc='battery max apprent power [kVA]')
+
+    model.bat_cycle_cost = Param(model.batteries, \
+                                 initialize=extract_properties(parameter, 'batteries', 'cycle_cost', batteryListInput), \
+                                 doc='battery cycle cost [$/kW]')
+    model.bat_battery_power = Param(model.batteries, \
+                                    initialize=extract_properties(parameter, 'batteries', 'battery_power', batteryListInput), \
+                                    doc='battery initial power [kW] (positive=charging, negative=discharging)')
             
     
     # these parameters are only used for battery degradation, and so should be extracted only when adding degrad equations
@@ -206,6 +214,11 @@ def add_battery(model, inputs, parameter):
                                           bounds=(0, None), doc='battery cell side charge [kW]')
     model.battery_discharge_power = Var(model.ts, model.batteries, \
                                               bounds=(0, None), doc='battery cell side discharge [kW]')
+    model.battery_cycle_power_change = Var(model.ts, model.batteries, bounds=(0, None), \
+                                           doc='absolute change in battery net power per timestep [kW]')
+    model.battery_cycle_cost = Var(model.batteries, bounds=(0, None), \
+                                   doc='per-battery total cycle cost [$]')
+    model.battery_cycle_cost_total = Var(bounds=(0, None), doc='total battery cycle cost [$]')
     
     model.battery_chargeXORdischarge = Var(model.ts, model.batteries, domain=Binary, \
                                             doc='battery charge or discharge binary [-]')
@@ -425,6 +438,47 @@ def add_battery(model, inputs, parameter):
     # #    model.constraint_regulation_upXORdn = Constraint(model.ts, rule=regulation_upXORdn, \
     # #                                                     doc='constraint regulation up or down') 
     
+    # Cycle cost constraints: linearize absolute value of change in net battery power
+    def battery_cycle_change_pos(model, ts, battery):
+        net_power = model.battery_charge_power[ts, battery] - model.battery_discharge_power[ts, battery]
+        if ts == model.ts.at(1):
+            net_power_prev = model.bat_battery_power[battery]
+        else:
+            net_power_prev = model.battery_charge_power[ts - model.timestep[ts], battery] \
+                             - model.battery_discharge_power[ts - model.timestep[ts], battery]
+        return model.battery_cycle_power_change[ts, battery] >= net_power - net_power_prev
+    model.constraint_battery_cycle_change_pos = Constraint(model.ts, model.batteries,
+                                                            rule=battery_cycle_change_pos,
+                                                            doc='cycle power change positive bound')
+
+    def battery_cycle_change_neg(model, ts, battery):
+        net_power = model.battery_charge_power[ts, battery] - model.battery_discharge_power[ts, battery]
+        if ts == model.ts.at(1):
+            net_power_prev = model.bat_battery_power[battery]
+        else:
+            net_power_prev = model.battery_charge_power[ts - model.timestep[ts], battery] \
+                             - model.battery_discharge_power[ts - model.timestep[ts], battery]
+        return model.battery_cycle_power_change[ts, battery] >= -(net_power - net_power_prev)
+    model.constraint_battery_cycle_change_neg = Constraint(model.ts, model.batteries,
+                                                            rule=battery_cycle_change_neg,
+                                                            doc='cycle power change negative bound')
+
+    def battery_cycle_cost_per_battery_rule(model, battery):
+        return model.battery_cycle_cost[battery] == sum(
+            model.battery_cycle_power_change[ts, battery] * model.bat_cycle_cost[battery]
+            for ts in model.ts
+        )
+    model.constraint_battery_cycle_cost_per_battery = Constraint(model.batteries,
+                                                                  rule=battery_cycle_cost_per_battery_rule,
+                                                                  doc='per-battery cycle cost')
+
+    def battery_cycle_cost_total_rule(model):
+        return model.battery_cycle_cost_total == sum(
+            model.battery_cycle_cost[battery] for battery in model.batteries
+        )
+    model.constraint_battery_cycle_cost_total = Constraint(rule=battery_cycle_cost_total_rule,
+                                                            doc='total battery cycle cost')
+
     # aggregate battery power output by node, works by default for single-node models
     def sum_battery_charge_grid(model, ts, nodes):
         return model.sum_battery_charge_grid_power[ts, nodes] == sum((model.battery_charge_grid_power[ts, battery] * model.battery_node_location[battery, nodes]) \

@@ -108,6 +108,7 @@ def default_parameter():
     parameter['objective']['weight_load_shed'] = 0 # Weight of shed load costs ($/kWh)  in objective
     parameter['objective']['weight_ev_charging'] = 0 # Weight of EV charging revenue in objective
     parameter['objective']['weight_ev_discharging'] = 0 # Weight of EV discharging cost in objective
+    parameter['objective']['weight_cycle_cost'] = 0 # Weight of battery cycle cost in objective
     return parameter
 
 def parameter_add_battery(parameter=None):
@@ -145,6 +146,8 @@ def parameter_add_battery(parameter=None):
          'min_added_soc': 0, # additional SOC added to leaving SOC constraint
          'charging_revenue': 0, # $/kWh net energy added per session
          'discharging_cost': 0, # $/kWh total discharge energy over horizon
+         'cycle_cost': 0, # $/kW total cycle power (sum of changes in net battery power)
+         'battery_power': 0, # kW initial battery power (positive=charging, negative=discharging)
         }
     ]
     return parameter
@@ -239,6 +242,8 @@ def parameter_add_evfleet(parameter=None):
          'min_added_soc': 0,
          'charging_revenue': 0,
          'discharging_cost': 0,
+         'cycle_cost': 0,
+         'battery_power': 0,
         },
         {
         'name': 'EV2',
@@ -257,6 +262,8 @@ def parameter_add_evfleet(parameter=None):
          'min_added_soc': 0,
          'charging_revenue': 0,
          'discharging_cost': 0,
+         'cycle_cost': 0,
+         'battery_power': 0,
         },
         {
         'name': 'EV3',
@@ -275,6 +282,8 @@ def parameter_add_evfleet(parameter=None):
          'min_added_soc': 0,
          'charging_revenue': 0,
          'discharging_cost': 0,
+         'cycle_cost': 0,
+         'battery_power': 0,
         }
     ]
     return parameter
@@ -878,6 +887,7 @@ def test_default_parameter():
 
     parameter['objective']['weight_co2'] = 0 # Weight of co2 emissions (kg) cost in objective
     parameter['objective']['weight_load_shed'] = 0 # Weight of shed load costs ($/kWh)  in objective
+    parameter['objective']['weight_cycle_cost'] = 0 # Weight of battery cycle cost in objective
     return parameter
 
 def test_parameter_add_battery(parameter=None):
@@ -909,7 +919,9 @@ def test_parameter_add_battery(parameter=None):
          'soc_min': 0.2,
          # 'temperature_initial': 22.0,
          'thermal_C': 100000.0,
-         'thermal_R': 0.01
+         'thermal_R': 0.01,
+         'cycle_cost': 0,
+         'battery_power': 0,
         }
     ]
     return parameter
@@ -1188,7 +1200,9 @@ def parameter_add_battery_multinode_test(parameter=None):
           'soc_min': 0.2,
           # 'temperature_initial': 22.0,
           'thermal_C': 100000.0,
-          'thermal_R': 0.01
+          'thermal_R': 0.01,
+          'cycle_cost': 0,
+          'battery_power': 0,
         },
         {
         'name':'testBat1B',
@@ -1208,7 +1222,9 @@ def parameter_add_battery_multinode_test(parameter=None):
           'soc_min': 0.2,
           'temperature_initial': 22.0,
           'thermal_C': 100000.0,
-          'thermal_R': 0.01
+          'thermal_R': 0.01,
+          'cycle_cost': 0,
+          'battery_power': 0,
         },
         {
           'name':'testBat2',
@@ -1228,7 +1244,9 @@ def parameter_add_battery_multinode_test(parameter=None):
           'soc_min': 0.2,
           # 'temperature_initial': 22.0,
           'thermal_C': 100000.0,
-          'thermal_R': 0.01
+          'thermal_R': 0.01,
+          'cycle_cost': 0,
+          'battery_power': 0,
         },
         {
         'name':'testBat3',
@@ -1248,7 +1266,9 @@ def parameter_add_battery_multinode_test(parameter=None):
           'soc_min': 0.2,
           'temperature_initial': 22.0,
           'thermal_C': 100000.0,
-          'thermal_R': 0.01
+          'thermal_R': 0.01,
+          'cycle_cost': 0,
+          'battery_power': 0,
         }
     ]
     return parameter

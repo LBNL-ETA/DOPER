@@ -72,6 +72,8 @@ def construct_model_function():
                 obj -= model.ev_charging_revenue * weights['weight_ev_charging']
             if weights.get('weight_ev_discharging', False):
                 obj += model.ev_discharging_cost * weights['weight_ev_discharging']
+            if weights.get('weight_cycle_cost', False):
+                obj += model.battery_cycle_cost_total * weights['weight_cycle_cost']
             return obj
         model.objective = Objective(rule=objective_function,
                                     sense=minimize,

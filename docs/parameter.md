@@ -85,6 +85,7 @@ The content of `parameter['objective']` is as follows:
 * `weight_load_shed` [int] weight applied to load shed unserved energy costs
 * `weight_ev_charging` [float] weight applied to EV charging revenue (`model.ev_charging_revenue`). The revenue term is subtracted from the objective, so a positive weight reduces cost when the EV is net-charged during a session. Only has effect when `parameter['system']['ev']` is enabled.
 * `weight_ev_discharging` [float] weight applied to EV discharging cost (`model.ev_discharging_cost`). The cost term is added to the objective, penalising total accumulated discharge energy. Only has effect when `parameter['system']['ev']` is enabled.
+* `weight_cycle_cost` [float] weight applied to the total battery cycle cost (`model.battery_cycle_cost_total`). The cost term is added to the objective, penalising power ramp events across all batteries. Requires `parameter['system']['battery']` to be enabled and a non-zero `cycle_cost` to be set in the battery configuration. Default is `0` (disabled).
 
 ---
 
@@ -228,6 +229,8 @@ This item is a list of batteries or electric vehicles present on-site. To includ
 	* If `False` then `soc_final` can be selected by optimization
 	* If `float` then `soc_final` must equal the value provided by user
 * `self_discharging` [float] fraction of stored energy lost to decay in each hour [-/hr]
+* `cycle_cost` [float] cost per unit of total cycle power accumulated over the optimization horizon [$/kW]. The cycle power at each timestep is computed as the absolute change in net battery power (charging minus discharging) relative to the previous timestep. The sum of these changes multiplied by `cycle_cost` is added to the objective when `weight_cycle_cost > 0`. Set to `0` to disable (default).
+* `battery_power` [float] net battery power at the start of the optimization horizon [kW]. Positive values indicate charging, negative values indicate discharging. This is used to initialize the cycle cost calculation for the first timestep, where the change is computed as `|net_power[t0] - battery_power|`. Set to `0` if the battery is idle at the start of the horizon (default).
 
 The follow battery properties are required when including the optional battery degradation model in the optimization:
 
@@ -253,6 +256,8 @@ parameter['batteries'] = [
 		'soc_initial': 0.65,
 		'soc_final': True,
 		'self_discharging': 0.0,
+		'cycle_cost': 0,
+		'battery_power': 0,
 
 		# optional properties
 		'nominal_V':  400,
@@ -264,6 +269,14 @@ parameter['batteries'] = [
     }
 ]
 ```
+
+##### Model variables added by `add_battery` for cycle cost
+
+When batteries are enabled, the following Pyomo variables are added to the model for cycle cost tracking:
+
+* `model.battery_cycle_power_change[ts, b]` — absolute change in net battery power (charge − discharge) between consecutive timesteps [kW]. At the first timestep the previous power is taken from `battery_power`.
+* `model.battery_cycle_cost[b]` — total cycle cost accumulated over the full horizon for each individual battery [$]. Computed as `sum(battery_cycle_power_change[ts, b] * bat_cycle_cost[b] for ts in model.ts)`.
+* `model.battery_cycle_cost_total` — aggregate cycle cost across all batteries [$]. Equal to `sum(battery_cycle_cost[b] for b in model.batteries)`.
 
 ---
 
