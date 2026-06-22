@@ -27,6 +27,34 @@ from .examples.example import (default_parameter,
                                parameter_add_battery,
                                parameter_add_loadcontrol)
 
+# Canonical objective term registry: (weight_key, model_var_name, sign)
+# sign=+1 cost, sign=-1 revenue. Add new objectives here only.
+OBJECTIVE_TERMS = [
+    ('weight_energy', 'sum_energy_cost', 1),
+    ('weight_demand', 'sum_demand_cost', 1),
+    ('weight_export', 'sum_export_revenue', 1),
+    ('weight_fuel', 'fuel_cost_total', 1),
+    ('weight_load_shed', 'load_shed_cost_total', 1),
+    ('weight_co2', 'co2_total', 1),
+    ('weight_ev_charging', 'ev_charging_revenue', -1),
+    ('weight_ev_discharging', 'ev_discharging_cost', 1),
+    ('weight_cycle_cost', 'battery_cycle_cost_total', 1),
+]
+
+
+def build_objectives_dict(model, parameter, objective):
+    """Build objectives breakdown dict from a completed optimisation result."""
+    objectives = {'total': float(objective) if objective is not None else None}
+    if model is not None and objective is not None:
+        weights = parameter.get('objective', {})
+        for weight_key, model_var, _sign in OBJECTIVE_TERMS:
+            if weights.get(weight_key, False) and hasattr(model, model_var):
+                val = getattr(model, model_var).value
+                if val is not None:
+                    objectives[model_var] = float(val)
+    return objectives
+
+
 def fix_bug_pyomo():
     """Fix bug in pyomo when intializing solver (timeout after 5s)"""
     from importlib import reload

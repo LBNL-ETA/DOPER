@@ -18,7 +18,7 @@ from fmlc import eFMU
 
 from .computetariff import compute_periods
 from .data.tariff import get_tariff
-from .utility import update_nested_dict, resolve_wrapper_callable
+from .utility import update_nested_dict, resolve_wrapper_callable, build_objectives_dict
 from .wrapper import make_doper
 
 class DoperWrapper(eFMU):
@@ -35,7 +35,7 @@ class DoperWrapper(eFMU):
         }
         self.output = {
             "output-data": None,
-            "objective": None,
+            "objectives": None,
             "opt-duration": None,
             "termination": None,
             "duration": None,
@@ -73,9 +73,11 @@ class DoperWrapper(eFMU):
         msg = ""
         data = None
         objective = None
+        objectives = {'total': None}
         duration = None
         termination = None
         df = None
+        model = None
         setpoints = {}
 
         msg += self.check_data(self.input["input-data"], True)
@@ -127,7 +129,7 @@ class DoperWrapper(eFMU):
                                                               tee=printing,
                                                               print_error=printing)
                     duration, objective, df, model, result, termination, parameter = self.res
-                    
+                    objectives = build_objectives_dict(model, self.parameter, objective)
 
                 # store outputs
                 if isinstance(df, pd.DataFrame):
@@ -153,7 +155,7 @@ class DoperWrapper(eFMU):
         # write outputs
         self.output["output-data"] = data
         self.output["valid"] = bool(objective)
-        self.output["objective"] = float(objective) if objective is not None else None
+        self.output["objectives"] = objectives
         self.output["opt-duration"] = float(duration) if duration is not None else None
         self.output["termination"] = str(termination)
         self.output["setpoints"] = setpoints
