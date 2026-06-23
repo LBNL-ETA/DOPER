@@ -3,7 +3,7 @@
 # National Laboratory (subject to receipt of any required approvals
 # from the U.S. Dept. of Energy). All rights reserved.
 
-""""Distributed Optimal and Predictive Energy Resources
+"""Distributed Optimal and Predictive Energy Resources
 Utility module.
 """
 
@@ -107,17 +107,22 @@ def download_cbc(cbc_version='2.10.8', root=get_root()):
     return os.path.join(root, f'cbc_{cbc_version}')
 
 def pandas_to_dict(df, columns=None, convertTs=False):
-    '''
-        Utility function to translate a pandas dataframe in a Python dictionary.
+    """Translate a pandas DataFrame or Series to a Python dictionary.
 
-        Input
-        -----
-            df (pandas.Series): The series to be converted.
+    Parameters
+    ----------
+    df : pandas.DataFrame or pandas.Series
+        Input data to convert.
+    columns : list, optional
+        Column labels to apply when ``df`` is a DataFrame.
+    convertTs : bool, optional
+        When True, convert a timestamp index to Unix time (seconds).
 
-        Returns
-        -------
-            d (dict): Python dictionary with the series input.
-    '''
+    Returns
+    -------
+    dict
+        Dictionary representation of the input data.
+    """
     d = {}
 
     if convertTs:
@@ -168,24 +173,23 @@ def unpack_ts_input(inputs, colName, default=None, required=True, as_string=Fals
 
 
 def add_second_index(dataDict, newIndex):
-    '''
-    function addes a static second key to dataDict.
-    Needed for when intializing node-indexed data for single-node models
-    applied to output of pandas_to_dict function for load and pv profiles
+    """Add a static second key to every entry of a 1-D dictionary.
+
+    Needed when initialising node-indexed data for single-node models
+    (applied to output of :func:`pandas_to_dict` for load and PV profiles).
 
     Parameters
     ----------
     dataDict : dict
-        1-d dictionary produced by panads_to_dict function (above).
-    newIndex : TYPE
-        DESCRIPTION.
+        1-D dictionary produced by :func:`pandas_to_dict`.
+    newIndex : str or int
+        Value to use as the second key, e.g. a node label.
 
     Returns
     -------
     dict
-        2-d dict with newIndex added as second key
-        e.g. (key1) -> (key1, {newIndex})
-    '''
+        2-D dict where every key becomes ``(key, newIndex)``.
+    """
 
     # initilize new dict
     dataDict2 = {}
@@ -197,18 +201,7 @@ def add_second_index(dataDict, newIndex):
     return dataDict2
 
 def pyomo_read_parameter(temp):
-    '''
-        Utility to read pyomo objects and return the content.
-
-        Input
-        -----
-            temp (pyomo.core.base.param.IndexedParam): The object ot be parsed.
-            
-        Returns
-        -------
-            d (dict): The parsed data as dictionary.
-
-    '''
+    """Read a Pyomo indexed parameter and return its contents as a dict."""
     d = {}
     for k,v in zip(temp.keys(), temp.values()):
         d[k] = v
@@ -260,23 +253,25 @@ def check_solver(solver='cbc'):
     logging.info(f'The solver was installed.')
 
 def extract_properties(parameter, tech_name, prop_name, set_list=None):
-    '''
+    """Extract a single property from every item in a technology list.
+
     Parameters
     ----------
     parameter : dict
-        full input parameter dict.
+        Full input parameter dict.
     tech_name : str
-        name of technology type (e.g. 'gensets') from where property is extracted.
+        Key of the technology list, e.g. ``'gensets'``.
     prop_name : str
-        name of property extracted from each technology item
-    set_list : list or None
-        list of strs representing set item names
+        Property name to extract from each technology item.
+    set_list : list or None, optional
+        When provided, items are keyed by their ``'name'`` field instead of
+        a numeric index.
 
     Returns
     -------
-    dataDict : TYPE
-        DESCRIPTION.
-    '''
+    dict
+        Mapping of index (or name) to the extracted property value.
+    """
     # if no set list is provided, extract data and assingn to numeric index
     if set_list is None:
         n = len(parameter[tech_name])
@@ -348,20 +343,23 @@ def standard_report(res, only_solver=False):
     return output
 
 def constructNodeInput(inputDf, colParam, nodeColName):
-    '''
+    """Build a node-specific input column and append it to a timeseries DataFrame.
+
     Parameters
     ----------
-    inputDf : pandas df
-        timeseries input dataframe.
-    colParam : None, list, or str
-        str or list of strings with column names to be used for new node input sereies.
+    inputDf : pandas.DataFrame
+        Timeseries input dataframe.
+    colParam : None, str, or list of str
+        Column name(s) to use for the new node input series.  If ``None`` the
+        column is set to zero; if a list, values are summed.
     nodeColName : str
-        name of new node-specific input sereies to be added to timeseries input df.
+        Name of the new column to add to ``inputDf``.
 
     Returns
     -------
-    inputDf: pandas df with new node input defined and appended to existing df
-    '''
+    pandas.DataFrame
+        ``inputDf`` with the new node-input column appended.
+    """
 
     if colParam is None:
         # if colParam is set to None in input, default pv profile to 0
@@ -709,14 +707,14 @@ def dev_output_list(parameter):
     return output_list
 
 def generate_summary_metrics(model):
-    '''
-    
+    """Compute summary economic and energy metrics from a solved Pyomo model.
 
     Returns
     -------
-        summary (dict): dictionary of metrics related to economic and energy results
-
-    '''
+    dict
+        Dictionary with keys ``'cost'``, ``'energy'``, and ``'power'``,
+        each containing relevant metrics.
+    """
     
     summary = {
         'cost': {},
