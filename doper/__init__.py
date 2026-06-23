@@ -8,4 +8,4 @@ from .wrapper import *
 from .computetariff import *
 from .data.tariff import get_tariff
 
-__version__ = "2.4.1"
+__version__ = "2.5.0"
