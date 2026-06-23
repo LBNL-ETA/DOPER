@@ -749,6 +749,190 @@ def generate_summary_metrics(model):
     
     return summary
 
+# Battery state keys tracked internally as expected states
+BATTERY_STATE_KEYS = ['soc_initial', 'battery_power']
+
+
+def init_expected_states(parameter):
+    """Build an expected-states dict from initial battery parameter values.
+
+    Parameters
+    ----------
+    parameter : dict
+        Full DOPER parameter dict (must contain ``parameter['batteries']``).
+
+    Returns
+    -------
+    dict or None
+        Dict with the same structure as parameter, containing only state keys,
+        e.g. ``{"batteries": [{"soc_initial": 0.65, "battery_power": 0.0}]}``.
+        Returns ``None`` when batteries are not enabled or not present.
+    """
+    if not parameter.get('system', {}).get('battery', False):
+        return None
+    if 'batteries' not in parameter:
+        return None
+    return {
+        "batteries": [
+            {k: bat.get(k) for k in BATTERY_STATE_KEYS if k in bat}
+            for bat in parameter['batteries']
+        ]
+    }
+
+
+def log_state_comparison(expected_states, state_inputs, parameter, timestamp, state_log):
+    """Append a row comparing expected vs provided states to the state log.
+
+    Parameters
+    ----------
+    expected_states : dict or None
+        Internal expected-states dict (from :func:`init_expected_states` or
+        :func:`update_expected_states_from_result`).
+    state_inputs : dict
+        Raw ``state_inputs`` dict received for the current call *before* it is
+        applied to ``parameter``.
+    parameter : dict
+        Full DOPER parameter dict (used to look up battery names).
+    timestamp : pandas.Timestamp
+        Timestamp for the current optimization horizon start (``data.index[0]``).
+    state_log : pandas.DataFrame or None
+        Existing state log to append to; pass ``None`` or an empty DataFrame on
+        the first call.
+
+    Returns
+    -------
+    pandas.DataFrame
+        Updated state log with the new row appended.
+    """
+    if expected_states is None:
+        return state_log if state_log is not None else pd.DataFrame()
+
+    row = {}
+
+    if 'batteries' in expected_states:
+        provided_batteries = state_inputs.get('batteries', [])
+        for i, bat_expected in enumerate(expected_states['batteries']):
+            bat_name = parameter['batteries'][i].get('name', str(i))
+            bat_provided = {}
+            if i < len(provided_batteries) and isinstance(provided_batteries[i], dict):
+                bat_provided = provided_batteries[i]
+
+            for state_key, exp_val in bat_expected.items():
+                row[f'batteries_{bat_name}_{state_key}_expected'] = exp_val
+                row[f'batteries_{bat_name}_{state_key}_provided'] = bat_provided.get(state_key, None)
+
+    if not row:
+        return state_log if state_log is not None else pd.DataFrame()
+
+    new_row = pd.DataFrame(row, index=[timestamp])
+    if state_log is None or state_log.empty:
+        return new_row
+    return pd.concat([state_log.dropna(axis=1, how='all'), new_row], sort=False)
+
+
+def apply_state_thresholds(parameter, expected_states, state_inputs, update_states_thr):
+    """Selectively revert state inputs to expected values based on per-state thresholds.
+
+    For each state key present in *update_states_thr*, the provided value from
+    *state_inputs* is only used when ``|expected - provided| > threshold``.
+    When the discrepancy is within the threshold the parameter is reverted to the
+    internally predicted (expected) value.  Keys absent from *update_states_thr*
+    are always updated from *state_inputs* (standard behaviour).
+
+    Parameters
+    ----------
+    parameter : dict
+        Full DOPER parameter dict, modified **in place**.
+    expected_states : dict or None
+        Internal expected-states dict (from :func:`init_expected_states` or
+        :func:`update_expected_states_from_result`).
+    state_inputs : dict
+        Raw ``state_inputs`` dict as received this call.
+    update_states_thr : dict
+        Mapping ``{state_key: threshold}``. Only keys present here are filtered.
+    """
+    if not update_states_thr or expected_states is None:
+        return
+    if 'batteries' not in expected_states:
+        return
+
+    provided_batteries = state_inputs.get('batteries', [])
+    for i, bat_expected in enumerate(expected_states['batteries']):
+        if i >= len(parameter.get('batteries', [])):
+            continue
+        bat_provided = {}
+        if i < len(provided_batteries) and isinstance(provided_batteries[i], dict):
+            bat_provided = provided_batteries[i]
+
+        for state_key, threshold in update_states_thr.items():
+            if state_key not in bat_expected:
+                continue
+            expected_val = bat_expected[state_key]
+            provided_val = bat_provided.get(state_key)
+
+            if provided_val is None or abs(expected_val - provided_val) <= threshold:
+                # discrepancy within threshold (or state not provided) → use expected
+                parameter['batteries'][i][state_key] = expected_val
+
+
+def update_expected_states_from_result(model, parameter):
+    """Compute expected states for the next optimization run from the current result.
+
+    Extracts per-battery:
+    - ``soc_initial``: predicted SOC at the second timestep (start of next horizon)
+    - ``battery_power``: net cell-side power at the first timestep
+
+    Parameters
+    ----------
+    model : pyomo.environ.ConcreteModel
+        Solved Pyomo model (``self.smart_der.model``).
+    parameter : dict
+        Full DOPER parameter dict.
+
+    Returns
+    -------
+    dict or None
+        Updated expected-states dict, or ``None`` if batteries are absent from
+        the model.
+    """
+    if not hasattr(model, 'batteries'):
+        return None
+
+    ts_list = list(model.ts.ordered_data())
+    if not ts_list:
+        return None
+    ts_first = ts_list[0]
+    ts_second = ts_list[1] if len(ts_list) > 1 else ts_list[0]
+
+    battery_states = []
+    for bat in parameter['batteries']:
+        bat_name = bat.get('name', '')
+        state = {}
+
+        # soc_initial for next run = predicted SOC at the second timestep
+        if hasattr(model, 'battery_soc'):
+            try:
+                soc_val = model.battery_soc[ts_second, bat_name].value
+                if soc_val is not None:
+                    state['soc_initial'] = soc_val
+            except Exception:  # pylint: disable=broad-except
+                pass
+
+        # battery_power for next run = net cell-side power at the first timestep
+        if hasattr(model, 'battery_charge_power') and hasattr(model, 'battery_discharge_power'):
+            try:
+                charge = model.battery_charge_power[ts_first, bat_name].value
+                discharge = model.battery_discharge_power[ts_first, bat_name].value
+                if charge is not None and discharge is not None:
+                    state['battery_power'] = charge - discharge
+            except Exception:  # pylint: disable=broad-except
+                pass
+
+        battery_states.append(state)
+
+    return {"batteries": battery_states}
+
+
 def resolve_wrapper_callable(callable_spec, default_callable=None, spec_name='callable'):
     """Resolve wrapper callable from JSON-serializable specification.
 

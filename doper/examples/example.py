@@ -96,6 +96,8 @@ def default_parameter():
     parameter['controller']['log_overtime'] = 1*60 # Log when over time
     parameter['controller']['sp_processor'] = None # optional sp-processor {"module": "my_module", "name": "my_sp_processor"}
     # expected signature: my_sp_processor(data, parameter) -> setpoints as dict
+    parameter['controller']['update_states_thr'] = {} # Per-state threshold for state input filtering; empty = always use provided inputs
+    # Keys are BATTERY_STATE_KEYS; provided value used only when |expected - provided| > threshold
 
     parameter['objective'] = {}
     parameter['objective']['weight_energy'] = 1 # Weight of tariff (energy) cost in objective

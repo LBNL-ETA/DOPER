@@ -18,7 +18,9 @@ from fmlc import eFMU
 
 from .computetariff import compute_periods
 from .data.tariff import get_tariff
-from .utility import update_nested_dict, resolve_wrapper_callable, build_objectives_dict
+from .utility import (update_nested_dict, resolve_wrapper_callable, build_objectives_dict,
+                      init_expected_states, log_state_comparison,
+                      apply_state_thresholds, update_expected_states_from_result)
 from .wrapper import make_doper
 
 class DoperWrapper(eFMU):
@@ -46,6 +48,8 @@ class DoperWrapper(eFMU):
         self.parameter = None
         self.res = None
         self.smart_der = None
+        self.expected_states = None
+        self.state_log = None
 
     def _to_forecast_df(self, fc):
         """Convert forecast JSON into dataframe."""
@@ -53,7 +57,7 @@ class DoperWrapper(eFMU):
         df.index = pd.to_datetime(df.index)
         df = df.sort_index()
         return df
-    
+
     def log_results(self):
         """Function to log opt inputs."""
         # make dir
@@ -62,7 +66,7 @@ class DoperWrapper(eFMU):
         os.makedirs(log_dir, exist_ok=True)
 
         # log
-        fname = str(self.data.index[0]).replace(' ','').replace(':','')
+        fname = str(self.data.index[0]).replace(' ', '').replace(':', '')
         with open(os.path.join(log_dir, fname+'.txt'), 'w', encoding='utf8') as f:
             json.dump(self.parameter, f)
         self.data.to_csv(os.path.join(log_dir, fname+'.csv'))
@@ -103,12 +107,24 @@ class DoperWrapper(eFMU):
                         spec_name='sp_processor'
                     )
 
+                    # initialize expected states from initial parameter
+                    self.expected_states = init_expected_states(self.parameter)
+                    self.state_log = pd.DataFrame()
+
                     self.init = False
 
-                # update states
+                # parse state_inputs before applying (needed for comparison logging)
                 state_inputs = json.loads(self.input["state-inputs"])
+
+                # update states from state_inputs
                 update_nested_dict(self.parameter, state_inputs)
-                
+
+                # apply per-state thresholds
+                apply_state_thresholds(
+                    self.parameter, self.expected_states, state_inputs,
+                    self.parameter['controller']['update_states_thr']
+                )
+
                 # make inputs from forecast
                 data = self._to_forecast_df(self.input["input-data"])
                 tariff = get_tariff(self.parameter['site']["tariff_name"])
@@ -118,6 +134,12 @@ class DoperWrapper(eFMU):
                     msg += 'NAN values in MPC input. Index:' + \
                             data.index[pd.isnull(data).any().to_numpy().nonzero()[0]]
                 self.data = data
+
+                # log expected vs provided states
+                self.state_log = log_state_comparison(
+                    self.expected_states, state_inputs, self.parameter,
+                    self.data.index[0], self.state_log
+                )
 
                 if not msg:
                     # run doper
@@ -130,6 +152,15 @@ class DoperWrapper(eFMU):
                                                               print_error=printing)
                     duration, objective, df, model, result, termination, parameter = self.res
                     objectives = build_objectives_dict(model, self.parameter, objective)
+
+                    # update expected states from optimization result for the next call
+                    if objective:
+                        self.expected_states = update_expected_states_from_result(
+                            self.smart_der.model, self.parameter
+                        )
+                        # propagate expected states into parameter as defaults for next run
+                        if self.expected_states is not None:
+                            update_nested_dict(self.parameter, self.expected_states)
 
                 # store outputs
                 if isinstance(df, pd.DataFrame):

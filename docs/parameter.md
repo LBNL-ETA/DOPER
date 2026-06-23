@@ -67,6 +67,42 @@ parameter['controller']['sp_processor'] = {
 }
 ```
 
+* `update_states_thr` [dict] per-state threshold dict used by `DoperWrapper` to filter noisy state inputs. Default: `{}` (always use provided inputs).
+  * Keys are battery state names (`'soc_initial'`, `'battery_power'`); values are numeric thresholds.
+  * **Behaviour per key:** after the provided `state_inputs` are applied to `parameter`, for each state key present in this dict the wrapper checks `|expected − provided|`:
+    * `> threshold` → the provided sensor value is used (large discrepancy, trust the sensor).
+    * `≤ threshold` → the parameter reverts to the internally predicted value from the previous optimization result (small discrepancy, trust the model).
+  * State keys **not** in `update_states_thr` always use the value from `state_inputs` (unchanged behaviour).
+  * The expected values are always tracked internally in `wrapper.expected_states` and the raw expected/provided values are always logged to `wrapper.state_log` regardless of this setting.
+
+Example — ignore sensor noise smaller than 2 % SOC, but always accept `battery_power` updates:
+```python
+parameter['controller']['update_states_thr'] = {
+    'soc_initial': 0.02,   # only update if sensor differs by > 2 % from model prediction
+}
+```
+
+##### `DoperWrapper` state-tracking attributes
+
+`DoperWrapper` maintains two attributes that accumulate across `compute()` calls:
+
+* `wrapper.expected_states` [dict or None] the internally predicted battery states for the **next** optimization call, updated after every successful solve. Structure mirrors `parameter`:
+  ```python
+  {
+      "batteries": [
+          {"soc_initial": 0.62, "battery_power": -5.3},
+          ...
+      ]
+  }
+  ```
+  On the first call the values are seeded from the initial `parameter` values.
+
+* `wrapper.state_log` [pandas.DataFrame] one row per `compute()` call (indexed by `data.index[0]`), with columns:
+  * `batteries_{name}_soc_initial_expected` — model-predicted SOC used as the expected value this call.
+  * `batteries_{name}_soc_initial_provided` — raw SOC value received in `state_inputs` (`None` if not supplied).
+  * `batteries_{name}_battery_power_expected` — model-predicted initial battery power.
+  * `batteries_{name}_battery_power_provided` — raw battery power received in `state_inputs` (`None` if not supplied).
+
 ---
 
 #### 3. Defining `parameter['objective']`
