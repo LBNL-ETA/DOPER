@@ -11,6 +11,30 @@ Tariff module.
 
 import json
 
+
+def _restore_int_keys(tariff):
+    """Restore integer dict keys stringified during JSON serialisation."""
+    if 'seasons' in tariff:
+        tariff['seasons'] = {int(k): v for k, v in tariff['seasons'].items()}
+    if 'seasons_map' in tariff:
+        tariff['seasons_map'] = {int(k): v for k, v in tariff['seasons_map'].items()}
+    for season_name in tariff.get('seasons_map', {}).values():
+        if season_name not in tariff:
+            continue
+        season = tariff[season_name]
+        for key in ('energy', 'demand'):
+            if key in season and isinstance(season[key], dict):
+                season[key] = {int(k): v for k, v in season[key].items()}
+        if 'hours' in season and isinstance(season['hours'], dict):
+            hours = season['hours']
+            if 'weekday' in hours or 'weekend' in hours:
+                for daytype in list(hours.keys()):
+                    if isinstance(hours[daytype], dict):
+                        hours[daytype] = {int(k): v for k, v in hours[daytype].items()}
+            else:
+                season['hours'] = {int(k): v for k, v in hours.items()}
+    return tariff
+
 def get_e19_2018_tariff():
     """PG&E E-19 tariff (March 1, 2018)"""
     tariff = {}
@@ -355,7 +379,7 @@ def get_tariff(tariff='e19-2018'):
         try:
             parsed = json.loads(tariff)
             if isinstance(parsed, dict):
-                return parsed
+                return _restore_int_keys(parsed)
         except (json.JSONDecodeError, ValueError):
             pass
     if tariff == 'e19-2018':
