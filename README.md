@@ -77,10 +77,52 @@ The `parameter` input contains the following entries:
 * `system`: binary values indicating whether each DER or load asset is enabled or disabled
 * `site`: general characteristics of the site, interconnection constraints, and regulation requirements
 * `network`: for multi-node models, this optional field includes data to characterize the network topology, map loads and resources to each node, and characterize the lines connecting nodes
-* `tariff`: energy and power rates. Tariff time periods are provided in the separate time-series input
+* `tariff`: energy and power rates. Tariff time periods are provided in the separate time-series input. See [Tariff](#tariff) section below for details on loading built-in or custom tariffs.
 * `batteries`: a list of battery dicts with technical characteristics of each battery resource. Note: this is necessary because we have enabled `battery` in the 'system' field. 
 * `gensets`: a list of genset dicts with technical characteristics of each generator resource. Note: this is necessary because we have enabled `genset` in the 'system' field.
 * `load_control`: a list of load control dicts with technical characteristics of each load control resource. Note: this is necessary because we have enabled `load_control` in the 'system' field. 
+
+#### Tariff
+
+DOPER provides a helper function `get_tariff` (importable from `doper.data.tariff`) that returns a tariff dict ready to be assigned to `parameter['tariff']`. It accepts three types of input:
+
+* **Named string** — one of the built-in tariff identifiers (default: `'e19-2018'`):
+
+  | Identifier | Description |
+  |---|---|
+  | `'e19-2018'` | PG&E E-19 tariff (March 1, 2018) |
+  | `'e19-2018-new'` | PG&E E-19 tariff (November 2018) |
+  | `'e19-2019'` | PG&E E-19 tariff (April 24, 2019) |
+  | `'e19-2020'` | PG&E E-19 tariff (May 1, 2020) |
+  | `'e19-2022'` | PG&E E-19 tariff Secondary Voltage (June 1, 2022) |
+  | `'tou8-2019'` | SCE TOU-8 Option D 2-50 kV (July 26, 2019) |
+  | `'tou8-2020'` | SCE TOU-8 Option D 2-50 kV (March 13, 2020) |
+  | `'tou8-2022'` | SCE TOU-8 Option D 2-50 kV (June 1, 2022) |
+  | `'nspc-gtds-2019'` | Northern State Power Company – General Time of Day Service (January 6, 2019) |
+  | `'nspc-gs-2019'` | Northern State Power Company – General Service (January 6, 2019) |
+  | `'bge-gs-2019'` | Baltimore Gas and Electric – General Service (December 17, 2019) |
+  | `'bge-gs-2022'` | Baltimore Gas and Electric – General Service (January 1, 2022) |
+  | `'test1'` | Synthetic test tariff |
+
+* **Custom dict** — a fully user-defined tariff dict is returned unchanged.
+* **JSON string** — a JSON-encoded tariff dict is parsed and returned as a dict.
+
+```python
+from doper.data.tariff import get_tariff
+
+# Load a built-in tariff by name
+parameter['tariff'] = get_tariff('e19-2020')
+
+# Pass a custom tariff dict directly
+my_tariff = {'name': 'custom', 'tz': 'America/Los_Angeles', ...}
+parameter['tariff'] = get_tariff(my_tariff)
+
+# Pass a JSON-encoded tariff string
+import json
+parameter['tariff'] = get_tariff(json.dumps(my_tariff))
+```
+
+---
 
 #### 3. Define Optimization (Time-series) Input
 The optimization also needs timeseries data to indicate the values for time-variable model parameters (e.g. building load or PV generation). In application, these will often be linked to forecast models, but for this example, we simply load timeseries data from the `example_inputs` function.

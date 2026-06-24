@@ -9,6 +9,8 @@ Tariff module.
 
 # pylint: disable=line-too-long, pointless-string-statement, too-many-return-statements
 
+import json
+
 def get_e19_2018_tariff():
     """PG&E E-19 tariff (March 1, 2018)"""
     tariff = {}
@@ -338,7 +340,24 @@ def get_test1_tariff():
     return tariff
 
 def get_tariff(tariff='e19-2018'):
-    """High level utility to get tariff."""
+    """High level utility to get tariff.
+
+    Parameters
+    ----------
+    tariff : str, dict, or JSON string
+        If a dict is provided, it is returned as-is.
+        If a JSON string is provided, it is parsed and returned as a dict.
+        Otherwise, a named tariff string is expected.
+    """
+    if isinstance(tariff, dict):
+        return tariff
+    if isinstance(tariff, str):
+        try:
+            parsed = json.loads(tariff)
+            if isinstance(parsed, dict):
+                return parsed
+        except (json.JSONDecodeError, ValueError):
+            pass
     if tariff == 'e19-2018':
         return get_e19_2018_tariff()
     if tariff == 'e19-2018-new':
