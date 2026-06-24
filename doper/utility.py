@@ -39,6 +39,7 @@ OBJECTIVE_TERMS = [
     ('weight_ev_charging', 'ev_charging_revenue', -1),
     ('weight_ev_discharging', 'ev_discharging_cost', 1),
     ('weight_cycle_cost', 'battery_cycle_cost_total', 1),
+    ('weight_rtp_cost', 'sum_rtp_cost', 1),
 ]
 
 

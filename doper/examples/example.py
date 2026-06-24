@@ -111,6 +111,7 @@ def default_parameter():
     parameter['objective']['weight_ev_charging'] = 0 # Weight of EV charging revenue in objective
     parameter['objective']['weight_ev_discharging'] = 0 # Weight of EV discharging cost in objective
     parameter['objective']['weight_cycle_cost'] = 0 # Weight of battery cycle cost in objective
+    parameter['objective']['weight_rtp_cost'] = 0 # Weight of real time pricing cost
     return parameter
 
 def parameter_add_battery(parameter=None):
