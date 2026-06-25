@@ -32,7 +32,7 @@ def convert_tariff_dict(par=None, tariff=None):
             if season_name not in tariff:
                 continue
             season = tariff[season_name]
-            for key in ('energy', 'demand'):
+            for key in ('energy', 'demand', 'export'):
                 if key in season and isinstance(season[key], dict):
                     season[key] = {int(k): v for k, v in season[key].items()}
             if 'hours' in season and isinstance(season['hours'], dict):
@@ -74,6 +74,8 @@ def compute_periods(df, tariff, parameter, return_tariff=True, weekday_map=False
     tariff_map['energy'] = tariff[season]['energy']
     tariff_map['demand'] = tariff[season]['demand']
     tariff_map['demand_coincident'] = tariff[season]['demand_coincident']
+    if 'export' in tariff[season]:
+        tariff_map['export'] = tariff[season]['export']
     parameter['tariff'].update(tariff_map)
     # Build table
     df['hour'] = df.index.hour
