@@ -32,7 +32,7 @@ from .examples.example import (default_parameter,
 OBJECTIVE_TERMS = [
     ('weight_energy', 'sum_energy_cost', 1),
     ('weight_demand', 'sum_demand_cost', 1),
-    ('weight_export', 'sum_export_revenue', 1),
+    ('weight_export', 'sum_export_revenue', -1),
     ('weight_fuel', 'fuel_cost_total', 1),
     ('weight_load_shed', 'load_shed_cost_total', 1),
     ('weight_co2', 'co2_total', 1),

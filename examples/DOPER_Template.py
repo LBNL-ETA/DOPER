@@ -18,7 +18,7 @@ def control_model(inputs, parameter):
     def objective_function(model):
         return model.sum_energy_cost * parameter['objective']['weight_energy'] \
                + model.sum_demand_cost * parameter['objective']['weight_demand'] \
-               + model.sum_export_revenue * parameter['objective']['weight_export'] \
+               - model.sum_export_revenue * parameter['objective']['weight_export'] \
                + model.sum_regulation_revenue * parameter['objective']['weight_regulation']
     model.objective = Objective(rule=objective_function, sense=minimize, doc='objective function')
     return model

@@ -62,7 +62,7 @@ class TestBaseModel(unittest.TestCase):
             def objective_function(model):
                 return model.sum_energy_cost * parameter['objective']['weight_energy'] \
                        + model.sum_demand_cost * parameter['objective']['weight_demand'] \
-                       + model.sum_export_revenue * parameter['objective']['weight_export'] \
+                       - model.sum_export_revenue * parameter['objective']['weight_export'] \
                        + model.fuel_cost_total * parameter['objective']['weight_energy'] \
                        + model.load_shed_cost_total \
                        + model.co2_total * parameter['objective']['weight_co2'] \
@@ -211,7 +211,7 @@ class TestCycleCostNonzero(unittest.TestCase):
             def objective_function(model):
                 return model.sum_energy_cost * parameter['objective']['weight_energy'] \
                        + model.sum_demand_cost * parameter['objective']['weight_demand'] \
-                       + model.sum_export_revenue * parameter['objective']['weight_export'] \
+                       - model.sum_export_revenue * parameter['objective']['weight_export'] \
                        + model.fuel_cost_total * parameter['objective']['weight_energy'] \
                        + model.load_shed_cost_total \
                        + model.co2_total * parameter['objective']['weight_co2'] \
@@ -341,7 +341,7 @@ class TestBatteryPowerInit(unittest.TestCase):
             def objective_function(model):
                 return model.sum_energy_cost * parameter['objective']['weight_energy'] \
                        + model.sum_demand_cost * parameter['objective']['weight_demand'] \
-                       + model.sum_export_revenue * parameter['objective']['weight_export'] \
+                       - model.sum_export_revenue * parameter['objective']['weight_export'] \
                        + model.fuel_cost_total * parameter['objective']['weight_energy'] \
                        + model.load_shed_cost_total \
                        + model.co2_total * parameter['objective']['weight_co2'] \

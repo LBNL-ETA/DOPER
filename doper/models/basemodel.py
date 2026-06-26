@@ -524,7 +524,7 @@ def base_model(inputs, parameter):
     def sum_export_revenue(model):
         export = 0
         if parameter['site']['export_max'] > 0:
-            export = -1* sum(model.energy_export_revenue[t] for t in accounting_ts)
+            export = sum(model.energy_export_revenue[t] for t in accounting_ts)
         return model.sum_export_revenue == export
     model.constraint_sum_export_revenue = Constraint(rule=sum_export_revenue, doc='export revenue calculation')
         
@@ -581,7 +581,7 @@ def base_model(inputs, parameter):
     def total_cost(model):
         return model.total_cost == model.sum_energy_cost \
                                    + model.sum_demand_cost \
-                                   + model.sum_export_revenue
+                                   - model.sum_export_revenue
     model.constraint_total_cost = Constraint(rule=total_cost, doc='total cost')
         
     return model

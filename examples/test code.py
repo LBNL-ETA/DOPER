@@ -45,7 +45,7 @@ def control_model(inputs, parameter):
     def objective_function(model):
         return model.sum_energy_cost * parameter['objective']['weight_energy'] \
                + model.sum_demand_cost * parameter['objective']['weight_demand'] \
-               + model.sum_export_revenue * parameter['objective']['weight_export'] \
+               - model.sum_export_revenue * parameter['objective']['weight_export'] \
                + model.sum_regulation_revenue * parameter['objective']['weight_regulation'] \
                + model.fuel_cost_total * parameter['objective']['weight_energy'] \
                + model.load_shed_cost_total
