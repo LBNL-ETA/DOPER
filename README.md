@@ -72,7 +72,7 @@ Please refer to documentation on [Defining Parameter Object](https://github.com/
 
 
 The `parameter` input contains the following entries:
-* `controller`: settings for the optimization horizon, timestep, and location of solvers
+* `controller`: settings for the optimization horizon, timestep, solver location, and state-input filtering (see [State Input Filtering](#state-input-filtering) below)
 * `objective`: weights that can be applied when constructing the optimization objective function
 * `system`: binary values indicating whether each DER or load asset is enabled or disabled
 * `site`: general characteristics of the site, interconnection constraints, and regulation requirements
@@ -81,6 +81,28 @@ The `parameter` input contains the following entries:
 * `batteries`: a list of battery dicts with technical characteristics of each battery resource. Note: this is necessary because we have enabled `battery` in the 'system' field. 
 * `gensets`: a list of genset dicts with technical characteristics of each generator resource. Note: this is necessary because we have enabled `genset` in the 'system' field.
 * `load_control`: a list of load control dicts with technical characteristics of each load control resource. Note: this is necessary because we have enabled `load_control` in the 'system' field. 
+
+#### State Input Filtering
+
+The `DoperWrapper` applies measured states (e.g. battery SOC) from `state-inputs` to `parameter` before each optimization run. The `controller` section exposes one key to control how these measurements are accepted or rejected:
+
+* `update_states_thr` — `dict`, default `{}`. Maps each state key (e.g. `"soc_initial"`) to a threshold. When `|expected − measured| ≤ threshold` the measured value is considered too close to the model prediction to be meaningful, and the optimization runs with the internally predicted value instead. An empty dict (the default) always accepts the measured value.
+
+```python
+parameter['controller']['update_states_thr'] = {
+    'soc_initial': 0.05  # ignore measurements within 5% of predicted SOC
+}
+```
+
+**SOC boundary override** — regardless of `update_states_thr`, `soc_initial` is always accepted from measurements when the battery is at a limit:
+
+| Condition | Behaviour |
+|---|---|
+| `measured_soc <= soc_min` | always use measured value |
+| `measured_soc >= soc_max` | always use measured value |
+| `measured_soc < 0` | invalid reading — use internally predicted value |
+
+This ensures the optimizer correctly handles a fully depleted or fully charged battery even if the change is within the configured threshold.
 
 #### Tariff
 

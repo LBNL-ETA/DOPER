@@ -828,27 +828,27 @@ def log_state_comparison(expected_states, state_inputs, parameter, timestamp, st
         return new_row
     return pd.concat([state_log.dropna(axis=1, how='all'), new_row], sort=False)
 
-
 def apply_state_thresholds(parameter, expected_states, state_inputs, update_states_thr):
     """Selectively revert state inputs to expected values based on per-state thresholds.
 
-    For each state key present in *update_states_thr*, the provided value from
-    *state_inputs* is only used when ``|expected - provided| > threshold``.
-    When the discrepancy is within the threshold the parameter is reverted to the
-    internally predicted (expected) value.  Keys absent from *update_states_thr*
-    are always updated from *state_inputs* (standard behaviour).
+    For each state key in *update_states_thr*, the provided value from *state_inputs*
+    is accepted only when ``|expected - provided| > threshold``; otherwise the parameter
+    is reverted to the internally predicted (expected) value.
+
+    Special handling for ``soc_initial``:
+
+    * ``provided_val < 0`` — invalid reading; always revert to ``expected_val``.
+    * ``provided_val <= soc_min`` or ``provided_val >= soc_max`` — battery is at a
+      SOC limit; always keep the provided value regardless of the threshold.
 
     Parameters
     ----------
     parameter : dict
         Full DOPER parameter dict, modified **in place**.
     expected_states : dict or None
-        Internal expected-states dict (from :func:`init_expected_states` or
-        :func:`update_expected_states_from_result`).
     state_inputs : dict
-        Raw ``state_inputs`` dict as received this call.
     update_states_thr : dict
-        Mapping ``{state_key: threshold}``. Only keys present here are filtered.
+        ``{state_key: threshold}``
     """
     if not update_states_thr or expected_states is None:
         return
@@ -869,10 +869,21 @@ def apply_state_thresholds(parameter, expected_states, state_inputs, update_stat
             expected_val = bat_expected[state_key]
             provided_val = bat_provided.get(state_key)
 
-            if provided_val is None or abs(expected_val - provided_val) <= threshold:
-                # discrepancy within threshold (or state not provided) → use expected
-                parameter['batteries'][i][state_key] = expected_val
+            # soc_initial checks
+            if state_key == 'soc_initial' and provided_val is not None:
+                soc_min = parameter['batteries'][i]['soc_min']
+                soc_max = parameter['batteries'][i]['soc_max']
+                # invalid value
+                if provided_val < 0:
+                    parameter['batteries'][i][state_key] = expected_val
+                    continue
+                # boundary check
+                if (provided_val <= soc_min) or (provided_val >= soc_max):
+                    continue
 
+            # threshold check
+            if provided_val is None or abs(expected_val - provided_val) <= threshold:
+                parameter['batteries'][i][state_key] = expected_val
 
 def update_expected_states_from_result(model, parameter):
     """Compute expected states for the next optimization run from the current result.
@@ -930,7 +941,6 @@ def update_expected_states_from_result(model, parameter):
         battery_states.append(state)
 
     return {"batteries": battery_states}
-
 
 def resolve_wrapper_callable(callable_spec, default_callable=None, spec_name='callable'):
     """Resolve wrapper callable from JSON-serializable specification.
