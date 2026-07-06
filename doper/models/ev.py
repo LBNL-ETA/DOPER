@@ -127,8 +127,8 @@ def add_ev(model, inputs, parameter):
         if rate:
             # apply rate
             expr = model.battery_ev_discharging_cost[b] == rate * sum(
-                model.battery_discharge_grid_power[ts, b] / model.timestep_scale[ts]
-                for ts in model.ts
+                model.battery_discharge_grid_power[ts, b] / model.timestep_scale_fwd[ts]
+                for ts in model.accounting_ts
             )
         else:
             # no cost

@@ -466,11 +466,11 @@ def base_model(inputs, parameter):
 
     # CO2 Emissions
     def grid_import_emissions(model):
-        return model.co2_elec_import == sum((model.grid_import_site[t]*model.grid_co2_intensity[t] / model.timestep_scale[t]) for t in accounting_ts)
+        return model.co2_elec_import == sum((model.grid_import_site[t]*model.grid_co2_intensity[t] / model.timestep_scale_fwd[t]) for t in accounting_ts)
     model.constraint_grid_import_emissions = Constraint(rule=grid_import_emissions, doc='grid import co2 calculation')
     
     def grid_export_emissions(model):
-        return model.co2_elec_export == sum((model.grid_export_site[t]*model.grid_co2_intensity[t] / model.timestep_scale[t]) for t in accounting_ts)
+        return model.co2_elec_export == sum((model.grid_export_site[t]*model.grid_co2_intensity[t] / model.timestep_scale_fwd[t]) for t in accounting_ts)
     model.constraint_grid_export_emissions = Constraint(rule=grid_export_emissions, doc='grid export co2 calculation')
     
     def grid_import_emissions_profile(model, ts):
