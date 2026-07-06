@@ -158,8 +158,8 @@ def add_loadControl(model, inputs, parameter):
     
     # load shed cost is the sum of load shed cost by time each circuit is off
     def total_shed_cost(model):
-        return model.load_shed_cost_total ==  sum((model.load_cost[circuit] * model.load_shed_circuit[ts, circuit]) / model.timestep_scale[ts] \
-                                              for circuit in model.load_circuits for ts in model.ts)
+        return model.load_shed_cost_total ==  sum((model.load_cost[circuit] * model.load_shed_circuit[ts, circuit]) / model.timestep_scale_fwd[ts] \
+                                              for circuit in model.load_circuits for ts in model.accounting_ts)
     model.constraint_total_shed_cost = Constraint(rule=total_shed_cost, \
                                                     doc='constraint net total shed cost')
         
