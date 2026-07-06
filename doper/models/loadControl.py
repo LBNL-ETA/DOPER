@@ -61,6 +61,14 @@ def add_loadControl(model, inputs, parameter):
                                 doc='load control shed cost [$/kWh]')
     model.load_outageOnly = Param(model.load_circuits, initialize=extract_properties(parameter, 'load_control', 'outageOnly', load_circuits), \
                                 doc='load control backup only [1/0]')
+    # optional per-circuit cost applied to each 1->0 shedding activation [$]
+    transition_cost_dict = {circuit['name']: circuit.get('transition_cost', 0) for circuit in parameter['load_control']}
+    model.load_transition_cost = Param(model.load_circuits, initialize=transition_cost_dict, \
+                                doc='load circuit shedding activation cost (per 1->0 transition) [$/activation]')
+    # optional per-circuit initial connection state (1=connected, 0=disconnected) used to seed der_shed_load at t=1
+    load_connected_dict = {circuit['name']: circuit.get('load_connected', 1) for circuit in parameter['load_control']}
+    model.load_connected = Param(model.load_circuits, initialize=load_connected_dict, \
+                                doc='load circuit initial connection state (1=connected, 0=disconnected) [-]')
         
     # read in load_shed_potential ts-data by circuit name
     # data should exist as a column with name 'load_shed_potential_{c}', where c is name of load control circuit
@@ -170,15 +178,28 @@ def add_loadControl(model, inputs, parameter):
     model.constraint_node_load_shed = Constraint(model.ts, model.nodes, \
                                                                     rule=node_load_shed, \
                                                                     doc='constraint nodel load shed power')
-    # dampen curtail actuation (derivative) for falling edge                                            
+    # dampen curtail actuation (derivative) for falling edge
+    # at t=1 use load_connected to seed the previous state
     def der_shed_load(model, ts, load_circuit):
-        if ts == model.ts.at(1): return model.der_shed_load[ts, load_circuit] == 0
-        else: return model.der_shed_load[ts, load_circuit] >= model.load_circuits_on[ts-model.timestep[ts], load_circuit] - model.load_circuits_on[ts, load_circuit]
+        if ts == model.ts.at(1):
+            return model.der_shed_load[ts, load_circuit] >= model.load_connected[load_circuit] - model.load_circuits_on[ts, load_circuit]
+        else:
+            return model.der_shed_load[ts, load_circuit] >= model.load_circuits_on[ts-model.timestep[ts], load_circuit] - model.load_circuits_on[ts, load_circuit]
     model.constraint_der_shed_load = Constraint(model.ts, model.load_circuits, rule=der_shed_load,
                                                 doc='constraint load shed derivative by circuit')
     # load shed actuation activation, sum of all shed events 
     def total_der_shed_load(model):
         return model.load_shed_der_total ==  sum(model.der_shed_load[ts, circuit] for circuit in model.load_circuits for ts in model.ts)
-    model.constraint_total_der_shed_load = Constraint(rule=total_der_shed_load, doc='constraint total shed events')                                                
+    model.constraint_total_der_shed_load = Constraint(rule=total_der_shed_load, doc='constraint total shed events')
+
+    # load circuit activation cost: sum of per-circuit transition_cost weighted activations
+    def total_shed_act(model):
+        return model.load_shed_act_total == sum(
+            model.der_shed_load[ts, circuit] * model.load_transition_cost[circuit]
+            for circuit in model.load_circuits
+            for ts in model.accounting_ts
+        )
+    model.constraint_total_shed_act = Constraint(rule=total_shed_act,
+                                                 doc='constraint total load circuit shedding activations')
 
     return model

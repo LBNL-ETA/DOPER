@@ -80,7 +80,67 @@ The `parameter` input contains the following entries:
 * `tariff`: energy and power rates. Tariff time periods are provided in the separate time-series input. See [Tariff](#tariff) section below for details on loading built-in or custom tariffs.
 * `batteries`: a list of battery dicts with technical characteristics of each battery resource. Note: this is necessary because we have enabled `battery` in the 'system' field. 
 * `gensets`: a list of genset dicts with technical characteristics of each generator resource. Note: this is necessary because we have enabled `genset` in the 'system' field.
-* `load_control`: a list of load control dicts with technical characteristics of each load control resource. Note: this is necessary because we have enabled `load_control` in the 'system' field. 
+* `load_control`: a list of load control dicts with technical characteristics of each load control resource. Note: this is necessary because we have enabled `load_control` in the 'system' field. See [Load Control](#load-control) below for all available fields.
+
+#### Load Control
+
+When `parameter['system']['load_control'] = True`, DOPER can shed controllable load circuits to reduce energy cost or improve grid-outage survivability. Each entry in `parameter['load_control']` configures one circuit:
+
+| Field | Required | Default | Description |
+|---|---|---|---|
+| `name` | ✓ | — | Unique circuit identifier (string) |
+| `cost` | ✓ | — | Cost of shedding this circuit [$/kWh not served] |
+| `outageOnly` | ✓ | — | If `True`, circuit can only be shed during a grid outage |
+| `transition_cost` | | `0` | Cost applied each time the circuit transitions from **on → off** (a shedding activation) [$/activation] |
+| `load_connected` | | `1` | Initial connection state before the optimisation horizon starts (`1` = connected, `0` = disconnected). Used to seed the shedding-activation calculation at the first timestep. |
+
+The `transition_cost` and `load_connected` fields drive two objective-level variables:
+
+* **`load_shed_act_total`** — total weighted shedding activations over the accounting horizon:  
+  `load_shed_act_total = Σ der_shed_load[t, c] × transition_cost[c]` over all circuits `c` and accounting timesteps `t`.  
+  `der_shed_load[t, c]` captures the falling edge of `load_circuits_on` (i.e., it is ≥ 1 only when a circuit switches from on to off).
+
+* **`weight_load_shed_act`** (in `parameter['objective']`, default `0`) — scales `load_shed_act_total` in the objective. Set to a positive value to penalise frequent shedding activations.
+
+**Initialisation at the first timestep** — `load_connected` seeds the derivative constraint at `t=1`:
+
+```
+der_shed_load[t=1, c] >= load_connected[c] - load_circuits_on[t=1, c]
+```
+
+This means:
+- `load_connected = 1` (connected before the horizon): if the optimizer sheds the circuit at `t=1`, `der_shed_load[t=1]` ≥ 1, correctly counting that event toward `load_shed_act_total`.
+- `load_connected = 0` (already off): the constraint is non-binding at `t=1`; continuing to shed incurs no additional activation cost.
+
+The constraint is an **inequality** (`>=`), so the optimizer retains full flexibility to disconnect a circuit at the first timestep even when `load_connected = 1`.
+
+**Example configuration:**
+
+```python
+parameter = example.default_parameter()
+parameter['system']['load_control'] = True
+parameter['load_control'] = [
+    {
+        'name': 'hvac_zone_a',
+        'cost': 0.05,          # $/kWh not served
+        'outageOnly': False,
+        'transition_cost': 2,  # $2 per shedding activation
+        'load_connected': 1,   # circuit was on before the horizon
+    },
+    {
+        'name': 'ev_charger',
+        'cost': 0.10,
+        'outageOnly': False,
+        'transition_cost': 0,  # no activation penalty
+        'load_connected': 0,   # charger was already off
+    }
+]
+# Penalise frequent activations in the objective
+parameter['objective']['weight_load_shed'] = 1       # $/kWh weight
+parameter['objective']['weight_load_shed_act'] = 1   # activation cost weight
+```
+
+The time-series input must include a column `load_shed_potential_{name}` [kW] for each circuit, giving the maximum sheddable power at each timestep.
 
 #### State Input Filtering
 

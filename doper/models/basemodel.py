@@ -333,12 +333,14 @@ def base_model(inputs, parameter):
         model.load_shed_cost_total = Var(bounds=(0, None), doc='total load shed cost over horizon [$]')
         model.load_shed_site = Var(model.ts, bounds=(0, None), doc='total load shed [kW]')
         model.load_shed_der_total = Var(bounds=(0, None), doc='total load shed derivative over horizon [-]')
+        model.load_shed_act_total = Var(bounds=(0, None), doc='total load circuit activations (sum of load_circuits_on) over accounting horizon [-]')
     else:
         # if load control is disabled, set load shed and shed costs to zero
         model.load_shed = Var(model.ts, model.nodes, bounds=(0, 0), doc='load shed amount due to load control use [kW] - disabled')
         model.load_shed_cost_total = Var(bounds=(0, 0), doc='total load shed cost over horizon [$] - disabled')
         model.load_shed_site = Var(model.ts, bounds=(0, 0), doc='total load shed [kW] - disabled')
         model.load_shed_der_total = Var(bounds=(0, 0), doc='total load shed derivative over horizon [-]')
+        model.load_shed_act_total = Var(bounds=(0, 0), doc='total load circuit activations over accounting horizon [-] - disabled')
       
     if parameter['system']['hvac_control']:
         model.building_load_dynamic = Var(model.ts, model.nodes, bounds=(None, None), doc='dynamic building load demand [kW]')

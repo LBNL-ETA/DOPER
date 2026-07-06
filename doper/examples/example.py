@@ -112,6 +112,7 @@ def default_parameter():
     parameter['objective']['weight_ev_discharging'] = 0 # Weight of EV discharging cost in objective
     parameter['objective']['weight_cycle_cost'] = 0 # Weight of battery cycle cost in objective
     parameter['objective']['weight_rtp_cost'] = 0 # Weight of real time pricing cost
+    parameter['objective']['weight_load_shed_act'] = 0 # Weight of load circuit activation cost (per 1->0 transition) in objective
     return parameter
 
 def parameter_add_battery(parameter=None):
@@ -207,12 +208,16 @@ def parameter_add_loadcontrol(parameter=None):
         {
             'name': 'a',
             'cost': 0.05, # $/kWh not served
-            'outageOnly': False
+            'outageOnly': False,
+            'transition_cost': 0, # $/activation
+            'load_connected': 1, # initial circuit state
         },
         {
             'name': 'b',
             'cost': 0.3, # $/kWh not served
-            'outageOnly': False
+            'outageOnly': False,
+            'transition_cost': 0, # $/activation
+            'load_connected': 1, # initial circuit state
         }
     ]
     return parameter
@@ -891,6 +896,7 @@ def test_default_parameter():
     parameter['objective']['weight_co2'] = 0 # Weight of co2 emissions (kg) cost in objective
     parameter['objective']['weight_load_shed'] = 0 # Weight of shed load costs ($/kWh)  in objective
     parameter['objective']['weight_cycle_cost'] = 0 # Weight of battery cycle cost in objective
+    parameter['objective']['weight_load_shed_act'] = 0 # Weight of load circuit activation cost (per 1->0 transition) in objective
     return parameter
 
 def test_parameter_add_battery(parameter=None):

@@ -35,6 +35,7 @@ OBJECTIVE_TERMS = [
     ('weight_export', 'sum_export_revenue', -1),
     ('weight_fuel', 'fuel_cost_total', 1),
     ('weight_load_shed', 'load_shed_cost_total', 1),
+    ('weight_load_shed_act', 'load_shed_act_total', 1),
     ('weight_co2', 'co2_total', 1),
     ('weight_ev_charging', 'ev_charging_revenue', -1),
     ('weight_ev_discharging', 'ev_discharging_cost', 1),
