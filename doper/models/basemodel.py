@@ -94,8 +94,6 @@ def base_model(inputs, parameter):
                                doc='power tariff [$/kW]')
     model.tariff_energy_export = Param(model.periods, initialize=period_map(parameter['tariff']['export'], periods), \
                                        doc='export tariff [$/kWh]')
-    model.demand_periods_preset = Param(model.periods, initialize=period_map(parameter['site']['demand_periods_prev'], periods), \
-                                        doc='preset demand [kW]')
     model.pv_max_s = Param(model.nodes, initialize=0, mutable=True, \
                             doc='pv inv max apparent power [kVA]')
     # dynamic import/export limits
@@ -260,8 +258,14 @@ def base_model(inputs, parameter):
     model.grid_import = Var(model.ts, model.nodes, bounds=(0, dynamic_import_max_ub), doc='grid import at each node [kW]')
     model.grid_export = Var(model.ts, model.nodes,bounds=(0, dynamic_export_max_ub), doc='grid export at each node [kW]')
     
-    model.demand_charge_periods = Var(model.periods, bounds=(0, None), doc='maximal demand [kW,periods]')
-    model.demand_charge_overall = Var(bounds=(0, None), doc='maximal demand [kW]')
+    demand_periods_prev_map = period_map(parameter['site']['demand_periods_prev'], periods)
+    demand_periods_bounds = {p: (demand_periods_prev_map[p], None) for p in periods}
+    def demand_charge_periods_bounds_rule(model, p):
+        return demand_periods_bounds.get(p, (0, None))
+    model.demand_charge_periods = Var(model.periods, bounds=demand_charge_periods_bounds_rule,
+                                      doc='maximal demand [kW,periods]')
+    model.demand_charge_overall = Var(bounds=(parameter['site']['demand_coincident_prev'], None),
+                                      doc='maximal demand [kW]')
     
     model.power_provided = Var(model.ts, model.nodes, bounds=(None, None), doc='power provided at node [kW]')
     model.power_consumed = Var(model.ts, model.nodes, bounds=(None, None), doc='power consumed ar node [kW]')
@@ -441,14 +445,13 @@ def base_model(inputs, parameter):
                                                     rule=site_pv_gen_agg, doc='site-total pv gen')
     
     def demand_maximum_periods(model, ts):
-        if ts == model.ts.at(len(model.ts)): return model.demand_charge_periods[model.tariff_power_map[ts]] >= 0
-        else: return model.demand_charge_periods[model.tariff_power_map[ts]] >= model.grid_import_site[ts] \
-                                                                                - model.demand_periods_preset[model.tariff_power_map[ts]]
+        if ts == model.ts.at(len(model.ts)): return Constraint.Skip
+        else: return model.demand_charge_periods[model.tariff_power_map[ts]] >= model.grid_import_site[ts]
     model.constraint_demand_maximum = Constraint(model.ts, rule=demand_maximum_periods, doc='constraint demand periods')
-    
+
     def demand_maximum_overall(model, ts):
-        if ts == model.ts.at(len(model.ts)): return model.demand_charge_overall >= 0
-        else: return model.demand_charge_overall >= model.grid_import_site[ts] - parameter['site']['demand_coincident_prev']
+        if ts == model.ts.at(len(model.ts)): return Constraint.Skip
+        else: return model.demand_charge_overall >= model.grid_import_site[ts]
     model.constraint_demand_overall = Constraint(model.ts, rule=demand_maximum_overall, doc='constraint demand overall')
     
     def limit_physical_import(model, ts):
