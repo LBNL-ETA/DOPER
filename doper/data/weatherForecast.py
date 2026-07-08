@@ -176,6 +176,77 @@ def get_hrrr_forecast(lat, lon, dt, tz='America/Los_Angeles', max_hour=16,
     
     return res
 
+def get_noaa_hrrr_forecast(config, start_time, tz, forecaster=None, pvlib_processor=None):
+    """Download NOAA HRRR forecast, initialize forecaster and processor if needed."""
+
+    # initialize on first call
+    if not forecaster:
+        forecaster = get_hrrr_forecast
+        pvlib_processor = HRRR()
+        pvlib_processor.set_location(start_time.tz, config['lat'], config['lon'])
+
+    # ensure tmp dir exists
+    if not os.path.exists(config['tmp_dir']):
+        os.mkdir(config['tmp_dir'])
+
+    # download forecast
+    forecast = forecaster(config['lat'], config['lon'], start_time,
+                          tz=tz, max_hour=config['horizon'],
+                          tmp_dir=config['tmp_dir'], debug=config['debug'])
+
+    return forecast, forecaster, pvlib_processor
+
+def check_forecast(forecast, config, start_time, final_time):
+    """Validate forecast index format, numeric values, and time alignment."""
+    msg = ''
+
+    # check index format
+    for i, ix in enumerate(forecast.index):
+        if not bool(re.match(datetime_mask, str(ix))):
+            msg += f'ERROR: External forecast date format incorrect "{ix}" at position {i}.\n'
+
+    # check and convert to numeric
+    for c in forecast.columns:
+        forecast[c] = pd.to_numeric(forecast[c], errors='coerce')
+    if forecast.isnull().values.any():
+        msg += f'ERROR: NaNs in forecast at: {forecast.index[forecast.isnull().any(axis=1)]}.\n'
+
+    # check index alignment
+    if msg == '':
+        forecast.index = pd.to_datetime(forecast.index, format='%Y-%m-%d %H:%M:%S')
+        if not (len(forecast)-1) == config['horizon']:
+            msg += f'ERROR: Forecast length {len(forecast)-1} is not horizon {config["horizon"]}.\n'
+        if not forecast.index[0] == start_time.tz_localize(None):
+            msg += f'ERROR: Forecast start "{forecast.index[0]}" not ' \
+                + f'start_time "{start_time.tz_localize(None)}".\n'
+        if not forecast.index[-1] == final_time.tz_localize(None):
+            msg += f'ERROR: Forecast final "{forecast.index[-1]}" not ' \
+                + f'final_time "{final_time.tz_localize(None)}".\n'
+        if forecast.resample('1h').asfreq().isnull().values.any():
+            msg += f'ERROR: Missing timestamp in forecast.\n'
+
+    return forecast, msg
+
+def process_forecast(forecast, config, tz, pvlib_processor):
+    """Process HRRR forecast through pvlib to compute irradiance and temperature."""
+
+    # map to pvlib column names
+    direct = {k: v for k, v in FC_TO_PVLIV_MAP.items() if isinstance(v, str)}
+    pvlib_fc = forecast[direct.keys()].copy(deep=True).rename(columns=direct)
+    # fill computed fields with defaults
+    computed = {k: v for k, v in FC_TO_PVLIV_MAP.items() if not isinstance(v, str)}
+    for k, v in computed.items():
+        pvlib_fc[k] = v
+    pvlib_fc.index = pvlib_fc.index.tz_localize(tz)
+    # duplicate last row (pvlib bug workaround)
+    pvlib_fc.loc[pvlib_fc.index[-1]+pd.DateOffset(hours=1), :] = pvlib_fc.iloc[-1]
+    data = pvlib_processor.process_data(pvlib_fc)
+    data = data.loc[pvlib_fc.index[:-1]]
+    data.index = data.index.tz_localize(None)
+    data = data[config['output_cols'].keys()]
+
+    return data
+
 class weather_forecaster(eFMU):
     '''
     This class gathers the weather forecasts at one station on a specified frequency. It uses pvlib to
@@ -195,7 +266,8 @@ class weather_forecaster(eFMU):
         self.output = {'output-data':None, 'duration':None}
         
         self.forecaster = None
-        
+        self.pvlib_processor = None
+
     def check_data(self, data, ranges):
         for k, r in ranges.items():
             if k in data.columns:
@@ -240,92 +312,36 @@ class weather_forecaster(eFMU):
         self.forecast = pd.DataFrame()
         try:
             if self.config['source'] == 'noaa_hrrr':
-                if not self.forecaster:
-                    
-                    # setup forecaster
-                    self.forecaster = get_hrrr_forecast
+                # download hrrr forecast
+                self.forecast, self.forecaster, self.pvlib_processor = get_noaa_hrrr_forecast(
+                    self.config, start_time, tz, self.forecaster, self.pvlib_processor)
 
-                    # setup pvlib processor
-                    self.pvlib_processor = HRRR()
-                    self.pvlib_processor.set_location(start_time.tz,
-                                                      self.config['lat'],
-                                                      self.config['lon'])
-
-                # tmp dir
-                if not os.path.exists(self.config['tmp_dir']):
-                    os.mkdir(self.config['tmp_dir'])
-
-                # get forecast
-                self.forecast = self.forecaster(self.config['lat'],
-                                                self.config['lon'],
-                                                start_time,
-                                                tz=tz,
-                                                max_hour=self.config['horizon'],
-                                                tmp_dir=self.config['tmp_dir'],
-                                                debug=self.config['debug'])
-                
             elif self.config['source'] == 'json':
-
-                # read forecast form json
+                # read forecast from json
                 self.forecast = pd.read_json(io.StringIO(self.input['input-data'])).sort_index()
-                
-            else:
 
+            else:
                 # method not implemented
                 self.msg += f'ERROR: Source option "{self.config["source"]}" not valid.\n'
-                
-            # check index
-            for i, ix in enumerate(self.forecast.index):
-                if not bool(re.match(datetime_mask, str(ix))):
-                    self.msg += f'ERROR: External forecast date format incorrect "{ix}" at position {i}.\n'
-                    
-            # check and convert to numeric
-            for c in self.forecast.columns:
-                self.forecast[c] = pd.to_numeric(self.forecast[c], errors='coerce')
-            if self.forecast.isnull().values.any():
-                self.msg += f'ERROR: NaNs in forecast at: {self.forecast.index[self.forecast.isnull().any(axis=1)]}.\n'
 
-            # check index
-            if self.msg == '':
-                self.forecast.index = pd.to_datetime(self.forecast.index, format='%Y-%m-%d %H:%M:%S')
-                if not (len(self.forecast)-1) == self.config['horizon']:
-                    self.msg += f'ERROR: Forecast length {len(self.forecast)-1} is not horizon {self.config["horizon"]}.\n'
-                if not self.forecast.index[0] == start_time.tz_localize(None):
-                    self.msg += f'ERROR: Forecast start "{self.forecast.index[0]}" not ' \
-                        + f'start_time "{start_time.tz_localize(None)}".\n'
-                if not self.forecast.index[-1] == final_time.tz_localize(None):
-                    self.msg += f'ERROR: Forecast final "{self.forecast.index[-1]}" not ' \
-                        + f'final_time "{final_time.tz_localize(None)}".\n'
-                if self.forecast.resample('1h').asfreq().isnull().values.any():
-                    self.msg += f'ERROR: Missing timestamp in forecast.\n'
-                    
+            # check forecast
+            self.forecast, fc_msg = check_forecast(self.forecast, self.config, start_time, final_time)
+            self.msg += fc_msg
+
         except Exception as e:
             self.msg += f'ERROR: {e}\n\n{traceback.format_exc()}\n'
             self.forecast = pd.DataFrame()
-                        
-        # process data
+
+        # process data (noaa_hrrr only)
         self.data = pd.DataFrame()
-        if self.msg == '':
+        if self.msg == '' and self.config['source'] == 'noaa_hrrr':
             try:
-                # check forecast
+                # check forecast columns
                 self.check_data(self.forecast, self.config['forecast_cols'])
 
-                # process
+                # process through pvlib
                 if self.msg == '':
-                    # direct pvlib form forecast
-                    direct = {k: v for k, v in FC_TO_PVLIV_MAP.items() if isinstance(v, str)}
-                    self.pvlib_fc = self.forecast[direct.keys()].copy(deep=True).rename(columns=direct)
-                    # computed from forecast
-                    computed = {k: v for k, v in FC_TO_PVLIV_MAP.items() if not isinstance(v, str)}
-                    for k, v in computed.items():
-                        self.pvlib_fc[k] = v
-                    self.pvlib_fc.index = self.pvlib_fc.index.tz_localize(tz)
-                    # duplicate last beacuse of bug in pvlib
-                    self.pvlib_fc.loc[self.pvlib_fc.index[-1]+pd.DateOffset(hours=1), :] = self.pvlib_fc.iloc[-1]
-                    self.data = self.pvlib_processor.process_data(self.pvlib_fc)
-                    self.data = self.data.loc[self.pvlib_fc.index[:-1]]
-                    self.data.index = self.data.index.tz_localize(None)
-                    self.data = self.data[self.config['output_cols'].keys()]
+                    self.data = process_forecast(self.forecast, self.config, tz, self.pvlib_processor)
             except Exception as e:
                 self.msg += f'ERROR: {e}.\n\n{traceback.format_exc()}\n'
                 self.data = pd.DataFrame()
