@@ -874,15 +874,22 @@ def apply_state_thresholds(parameter, expected_states, state_inputs, update_stat
             if state_key == 'soc_initial' and provided_val is not None:
                 soc_min = parameter['batteries'][i]['soc_min']
                 soc_max = parameter['batteries'][i]['soc_max']
-                # invalid value
                 if provided_val < 0:
+                    # invalid reading; revert to expected
                     parameter['batteries'][i][state_key] = expected_val
-                    continue
-                # boundary check
-                if (provided_val <= soc_min) or (provided_val >= soc_max):
-                    continue
+                elif provided_val <= soc_min:
+                    # below or at minimum; clamp to soc_min
+                    parameter['batteries'][i][state_key] = soc_min
+                elif provided_val >= soc_max:
+                    # above or at maximum; clamp to soc_max
+                    parameter['batteries'][i][state_key] = soc_max
+                else:
+                    # normal value; apply threshold check
+                    if abs(expected_val - provided_val) <= threshold:
+                        parameter['batteries'][i][state_key] = expected_val
+                continue
 
-            # threshold check
+            # threshold check (for non-soc_initial state keys)
             if provided_val is None or abs(expected_val - provided_val) <= threshold:
                 parameter['batteries'][i][state_key] = expected_val
 
