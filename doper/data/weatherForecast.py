@@ -267,6 +267,8 @@ class weather_forecaster(eFMU):
         
         self.forecaster = None
         self.pvlib_processor = None
+        self.last_valid_forecast = None
+        self.last_valid_forecast_time = None
 
     def check_data(self, data, ranges):
         for k, r in ranges.items():
@@ -278,14 +280,12 @@ class weather_forecaster(eFMU):
             else:
                 self.msg += f'ERROR: Entry "{k}" is missing.\n'
 
-    def compute(self, now=None):
+    def compute(self):
         '''
         Gathers forecasts for the specified station. Returns either the forecast and error messages.
         
         Input
         -----
-        now (str): String representation of the local time the forecast is requested for. None (defualt)
-            falls back to using the user's current clock time.
         
         Return
         ------
@@ -301,17 +301,31 @@ class weather_forecaster(eFMU):
 
         # prepare inputs
         tz = self.config['tz']
-        if now == None:
-            now = pd.to_datetime(time.time(), unit='s')
-            now = now.replace(minute=0, second=0, microsecond=0, nanosecond=0)
-            now = now.tz_localize('UTC').tz_convert(tz)
-        start_time = pd.to_datetime(now)
+        now = self.input.get('time', None) # from FMLC
+        if now is None:
+            now = time.time()
+        now_ts = pd.to_datetime(now, unit='s')
+        now_ts = now_ts.replace(minute=0, second=0, microsecond=0, nanosecond=0)
+        now_ts = now_ts.tz_localize('UTC').tz_convert(tz)
+        start_time = pd.to_datetime(now_ts)
         final_time = start_time + pd.Timedelta(hours=self.config['horizon'])
         
+        # check if stored forecast can be reused
+        refresh_time = self.config.get('refresh_time', None)
+        use_stored = (
+            refresh_time is not None and
+            self.last_valid_forecast is not None and
+            (now - self.last_valid_forecast_time) < refresh_time
+        )
+
         # get forecast
         self.forecast = pd.DataFrame()
         try:
-            if self.config['source'] == 'noaa_hrrr':
+            if use_stored:
+                # reuse last valid forecast within refresh window
+                self.forecast = self.last_valid_forecast.copy()
+
+            elif self.config['source'] == 'noaa_hrrr':
                 # download hrrr forecast
                 self.forecast, self.forecaster, self.pvlib_processor = get_noaa_hrrr_forecast(
                     self.config, start_time, tz, self.forecaster, self.pvlib_processor)
@@ -350,6 +364,16 @@ class weather_forecaster(eFMU):
         if self.msg == '' and self.config['output_cols']:
             self.check_data(self.data, self.config['output_cols'])
 
+        # use last valid forecast as fallback
+        if self.msg == '':
+            # store last valid forecast
+            self.last_valid_forecast = self.forecast.copy()
+            self.last_valid_forecast_time = now
+        elif self.last_valid_forecast is not None:
+            self.forecast = self.last_valid_forecast.copy()
+            if self.config['source'] == 'noaa_hrrr' and self.pvlib_processor is not None:
+                self.data = process_forecast(self.forecast, self.config, tz, self.pvlib_processor)
+
         # return
         self.init = False
         if self.config['json_return']:
@@ -372,6 +396,7 @@ def get_default_config():
     config['tmp_dir'] = 'tmp'
     config['debug'] = False
     config['source'] = 'noaa_hrrr'
+    config['refresh_time'] = 15*60 # 15 minutes
     config['json_return'] = True
     config['forecast_cols'] = {
         '9:Total Cloud Cover:% (instant):lambert:atmosphere:level 0 -': [0, 100],
@@ -391,6 +416,8 @@ if __name__ == '__main__':
     # initialize
     forecaster = weather_forecaster()
     forecaster.input['config'] = config
+    # FMLC hidden input
+    forecaster.input['time'] = time.time()
 
     # for defcon setup
     if len(sys.argv) == 2:
@@ -398,7 +425,7 @@ if __name__ == '__main__':
         forecaster.input['input-data'] = pd.read_csv(sys.argv[1], index_col=0).to_json()
     
     # get forecast
-    msg = forecaster.compute(now=None)
+    msg = forecaster.compute()
     res = pd.read_json(io.StringIO(forecaster.output['output-data']))
     
     # check for errors
