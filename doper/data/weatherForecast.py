@@ -315,7 +315,8 @@ class weather_forecaster(eFMU):
         use_stored = (
             refresh_time is not None and
             self.last_valid_forecast is not None and
-            (now - self.last_valid_forecast_time) < refresh_time
+            (now - self.last_valid_forecast_time) < refresh_time and
+            now_ts.hour == self.last_valid_forecast.index[0].hour
         )
 
         # get forecast
