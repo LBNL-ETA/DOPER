@@ -534,6 +534,12 @@ def default_output_list(parameter):
                 'name': 'batSOC',
                 'data': 'battery_agg_soc',
                 'df_label': 'Battery Aggregate SOC [-]'
+            },
+            {
+                'name': 'batNetGridPower',
+                'data': 'battery_net_grid_power',
+                'index': 'batteries',
+                'df_label': 'Battery %s Net Grid Power [kW]'
             }
         ]
     

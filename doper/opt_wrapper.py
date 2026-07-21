@@ -43,11 +43,14 @@ class DoperWrapper(eFMU):
             "duration": None,
             "valid": None,
             "setpoints": None,
+            "ext-logs": None,
         }
         self.init = True
         self.parameter = None
         self.res = None
         self.smart_der = None
+        self.sp_processor = None
+        self.fb_processor = None
         self.expected_states = None
         self.state_log = None
 
@@ -83,6 +86,7 @@ class DoperWrapper(eFMU):
         df = None
         model = None
         setpoints = {}
+        ext_logs = {}
 
         msg += self.check_data(self.input["input-data"], True)
 
@@ -105,6 +109,12 @@ class DoperWrapper(eFMU):
                     self.sp_processor = resolve_wrapper_callable(
                         self.parameter['controller']['sp_processor'],
                         spec_name='sp_processor'
+                    )
+
+                    # fallback processor
+                    self.fb_processor = resolve_wrapper_callable(
+                        self.parameter['controller']['fb_processor'],
+                        spec_name='fb_processor'
                     )
 
                     # initialize expected states from initial parameter
@@ -168,7 +178,8 @@ class DoperWrapper(eFMU):
 
                     # process setpoints
                     if self.sp_processor:
-                        setpoints = self.sp_processor(data, self.parameter)
+                        setpoints, log = self.sp_processor(data, self.parameter)
+                        ext_logs[self.sp_processor.__module__] = log
 
                     data = data.to_json()
 
@@ -183,6 +194,12 @@ class DoperWrapper(eFMU):
                 msg += f'\n\n{traceback.format_exc()}'
             data = None
 
+        # fallback processor
+        if msg or not objective or not isinstance(df, pd.DataFrame):
+            if self.fb_processor:
+                setpoints, log = self.fb_processor(data, self.parameter)
+                ext_logs[self.fb_processor.__module__] = log
+
         # write outputs
         self.output["output-data"] = data
         self.output["valid"] = bool(objective)
@@ -190,6 +207,7 @@ class DoperWrapper(eFMU):
         self.output["opt-duration"] = float(duration) if duration is not None else None
         self.output["termination"] = str(termination)
         self.output["setpoints"] = setpoints
+        self.output["ext-logs"] = json.dumps(ext_logs)
         self.output["duration"] = time.time() - st
 
         if not msg:

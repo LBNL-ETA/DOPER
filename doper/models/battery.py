@@ -232,7 +232,10 @@ def add_battery(model, inputs, parameter):
     def battery_discharge_power_bounds(model, ts, battery):
         return (0, model.bat_power_discharge[battery])
     model.battery_discharge_grid_power = Var(model.ts, model.batteries, bounds=battery_discharge_power_bounds, \
-                                        doc='limit battery discharge [kW]')    
+                                        doc='limit battery discharge [kW]')
+
+    model.battery_net_grid_power = Var(model.ts, model.batteries, \
+                                       doc='net battery grid power (charge - discharge) [kW]')
     
     def battery_energy_bounds(model, ts, battery):
         return (model.bat_soc_min[battery]*model.bat_capacity[battery], \
@@ -310,7 +313,14 @@ def add_battery(model, inputs, parameter):
         return model.battery_discharge_power[ts, battery] == (model.battery_discharge_grid_power[ts, battery] )\
                                                               / model.bat_eff_discharge[battery]
     model.constraint_battery_discharge_losses = Constraint(model.ts, model.batteries, rule=battery_discharge_losses, \
-                                                            doc='constraint battery discharging')   
+                                                            doc='constraint battery discharging')
+
+    def battery_net_grid_power_rule(model, ts, battery):
+        return model.battery_net_grid_power[ts, battery] == \
+               model.battery_charge_grid_power[ts, battery] - model.battery_discharge_grid_power[ts, battery]
+    model.constraint_battery_net_grid_power = Constraint(model.ts, model.batteries, \
+                                                          rule=battery_net_grid_power_rule, \
+                                                          doc='constraint net battery grid power')
         
     def battery_selfdischarge_losses(model, ts, battery):
         if ts == model.ts.at(1):

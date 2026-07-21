@@ -72,7 +72,7 @@ Please refer to documentation on [Defining Parameter Object](https://github.com/
 
 
 The `parameter` input contains the following entries:
-* `controller`: settings for the optimization horizon, timestep, solver location, and state-input filtering (see [State Input Filtering](#state-input-filtering) below)
+* `controller`: settings for the optimization horizon, timestep, solver location, setpoint processing, fallback processing, and state-input filtering (see [State Input Filtering](#state-input-filtering) below)
 * `objective`: weights that can be applied when constructing the optimization objective function
 * `system`: binary values indicating whether each DER or load asset is enabled or disabled
 * `site`: general characteristics of the site, interconnection constraints, and regulation requirements
@@ -141,6 +141,128 @@ parameter['objective']['weight_load_shed_act'] = 1   # activation cost weight
 ```
 
 The time-series input must include a column `load_shed_potential_{name}` [kW] for each circuit, giving the maximum sheddable power at each timestep.
+
+#### Setpoint Processor and Fallback Processor
+
+The `controller` section exposes two optional callable hooks that can post-process optimization results:
+
+* `sp_processor` — `None` (default) or a dict `{"module": "my_module", "name": "my_sp_processor"}`. Called after a **successful** optimization run when the result DataFrame `df` is available. Receives `(data, parameter)` and must return `(setpoints, log)`.
+
+* `fb_processor` — `None` (default) or a dict `{"module": "my_module", "name": "my_fb_processor"}`. Called as a **fallback** whenever the optimization did not produce valid results, i.e. when `msg or not objective or not isinstance(df, pd.DataFrame)`. Receives `(data, parameter)` and must return `(setpoints, log)`.
+
+Both callables are resolved once at wrapper initialisation using `resolve_wrapper_callable` and called on every subsequent `compute()` invocation where their trigger condition is met. The `log` value (any JSON-serializable type) is stored in the `"ext-logs"` output keyed by the processor's module name.
+
+```python
+# In the parameter dict
+parameter['controller']['sp_processor'] = {
+    "module": "my_package.processors",
+    "name": "my_sp_processor"
+}
+# expected signature: my_sp_processor(data, parameter) -> (setpoints: dict, log)
+
+parameter['controller']['fb_processor'] = {
+    "module": "my_package.processors",
+    "name": "my_fb_processor"
+}
+# expected signature: my_fb_processor(data, parameter) -> (setpoints: dict, log)
+```
+
+A ready-to-use **setpoint processor** for battery storage is provided in `doper.data.setpoint_processor` and is configured as the default in `default_parameter()`. It reads the optimized net grid power (`battery_net_grid_power`) from the result DataFrame and maps it to setpoint keys:
+
+```python
+parameter['controller']['sp_processor'] = {
+    "module": "doper.data.setpoint_processor",
+    "name": "battery_setpoint_processor"
+}
+```
+
+The processor reads `'Battery %s Net Grid Power [kW]'` columns from the result DataFrame (one per battery), applies an optional `setpoint_scale`, and writes the value to the setpoint key defined by `parameter['controller']['setpoint_names']['battery_power']`. It silently skips when `parameter['system']['battery']` is `False`. The `log` contains `messages` and `warnings`.
+
+Processor behaviour can be tuned via `parameter['setpoint_processor_config']`:
+
+```python
+parameter['setpoint_processor_config'] = {
+    'battery_net_grid_power_col': 'Battery %s Net Grid Power [kW]', # source column template
+    'setpoint_scale': 1,  # multiply power value before writing to setpoints
+}
+```
+
+A ready-to-use TOU-based fallback for battery storage is provided in `doper.data.fallback_processor`:
+
+```python
+parameter['controller']['fb_processor'] = {
+    "module": "doper.data.fallback_processor",
+    "name": "battery_tou_processor"
+}
+```
+
+The fallback processor returns `(setpoints, log)` where `setpoints` keys are formatted strings (default `'Battery %s Power Command [kW]'` with the battery display name substituted) and values are plain floats. `log` contains `hour`, `messages`, and `overrides`.
+
+##### Setpoint names
+
+To ensure that `sp_processor` and `fb_processor` produce **identical setpoint key names**, both processors should read their key templates from a shared location in `parameter`:
+
+```python
+parameter['controller']['setpoint_names'] = {
+    'battery_power': 'Battery %s Power Command [kW]',  # format string; %s = display name
+    'battery_name_map': {
+        # optional: map internal battery name -> display name inserted into the template
+        # 'libat01': 'Main BESS',
+    },
+}
+```
+
+`battery_tou_processor` reads this dict automatically. Any custom `sp_processor` should do the same:
+
+```python
+def my_sp_processor(data, parameter):
+    sp_names = {}
+    if 'controller' in parameter and 'setpoint_names' in parameter['controller']:
+        sp_names = parameter['controller']['setpoint_names']
+    template = sp_names['battery_power'] if 'battery_power' in sp_names else 'Battery %s Power Command [kW]'
+    battery_name_map = sp_names['battery_name_map'] if 'battery_name_map' in sp_names else {}
+
+    setpoints = {}
+    for bat in parameter['batteries']:
+        display_name = battery_name_map[bat['name']] if bat['name'] in battery_name_map else bat['name']
+        setpoints[template % display_name] = ...  # computed value
+    return setpoints, {}
+```
+
+When `battery_name_map` is empty (the default), the internal battery `name` is used as-is. When a battery is not listed in `battery_name_map`, it also falls back to the internal name.
+
+The TOU schedule and all sizing parameters can be overridden via `parameter['battery_tou_processor_config']`:
+
+```python
+parameter['battery_tou_processor_config'] = {
+    # (start_h, end_h, mode, rate)
+    # rate [kW]: when set, used directly instead of the energy/time calculation
+    'tou_windows': [
+        (0,  6,  'charge',    None),   # size to fill SOC by 06:00
+        (6,  9,  'idle',      None),
+        (9,  15, 'charge',    None),   # size to fill SOC by 15:00
+        (15, 21, 'discharge', 30.0),   # fixed 30 kW discharge
+        (21, 24, 'idle',      None),
+    ],
+    'safety_factor': 1.15,            # headroom above average rate (default 1.0)
+    'min_hours_remaining': 0.25,      # minimum window remainder [h] (default 0)
+    'emergency_recovery_hours': 2.0,  # recovery window when soc < soc_min
+    'setpoint_name': 'Battery %s Power Command [kW]', # fallback key template (used when setpoint_names not set)
+    'setpoint_scale': 1,              # multiply power_kW before writing to setpoints
+}
+```
+
+Safety overrides always apply on top of the rate or calculated power:
+- `soc < soc_min` → emergency charge sized to recover within `emergency_recovery_hours`
+- `soc >= soc_max` during a charge window → power set to 0
+
+The `"ext-logs"` output is a JSON string keyed by processor module name and is always present (empty `{}` when no processor ran):
+
+```python
+import json
+ext_logs = json.loads(wrapper.output["ext-logs"])
+# e.g. {"my_package.processors": <log value>}
+```
 
 #### State Input Filtering
 

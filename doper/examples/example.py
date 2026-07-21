@@ -94,10 +94,20 @@ def default_parameter():
     parameter['controller']['log_dir'] = './logs' # Log dir
     parameter['controller']['instance_id'] = '1' # Instance ID
     parameter['controller']['log_overtime'] = 1*60 # Log when over time
-    parameter['controller']['sp_processor'] = None # optional sp-processor {"module": "my_module", "name": "my_sp_processor"}
-    # expected signature: my_sp_processor(data, parameter) -> setpoints as dict
+    parameter['controller']['sp_processor'] = { # default battery setpoint processor
+        "module": "doper.data.setpoint_processor",
+        "name": "battery_setpoint_processor"
+    }
+    # expected signature: my_sp_processor(data, parameter) -> (setpoints: dict, log)
+    parameter['controller']['fb_processor'] = None # optional fallback processor {"module": "my_module", "name": "my_fb_processor"}
+    # called when msg or not objective or not isinstance(df, pd.DataFrame)
+    # expected signature: my_fb_processor(data, parameter) -> (setpoints: dict, log)
     parameter['controller']['update_states_thr'] = {} # Per-state threshold for state input filtering; empty = always use provided inputs
     # Keys are BATTERY_STATE_KEYS; provided value used only when |expected - provided| > threshold
+    parameter['controller']['setpoint_names'] = {
+        'battery_power': 'Battery %s Power Command [kW]', # template for battery power setpoint key (%s = display name)
+        'battery_name_map': {}, # internal battery name -> display name; identity if empty
+    }
 
     parameter['objective'] = {}
     parameter['objective']['weight_energy'] = 1 # Weight of tariff (energy) cost in objective
