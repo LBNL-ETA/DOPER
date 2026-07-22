@@ -149,10 +149,10 @@ class TestSizePower(unittest.TestCase):
         self.assertEqual(power, 0.0)
 
     def test_discharge_sized_by_energy(self):
-        # 3 h remaining, drain 0.8->0.2 on 200 kWh = 120 kWh
+        # 3 h remaining, drain 0.8->0.2 on 200 kWh = 120 kWh; discharge is negative
         bat = _make_bat(soc=0.8)
         power = _size_power('discharge', 18.0, 21.0, bat, self.cfg)
-        expected = min(50, 120 / 3.0 * self.sf)
+        expected = -min(50, 120 / 3.0 * self.sf)
         self.assertAlmostEqual(power, expected, places=6)
 
     def test_discharge_capped_at_max_discharge(self):
@@ -238,7 +238,7 @@ class TestBatteryTouProcessor(unittest.TestCase):
     def test_peak_window_discharges(self):
         data = _make_data(hour=18)
         setpoints, _ = battery_tou_processor(data, _make_param(_make_bat(soc=0.8)))
-        self.assertGreater(setpoints['Battery bat Power Command [kW]'], 0.0)
+        self.assertLess(setpoints['Battery bat Power Command [kW]'], 0.0)
 
     # Rate override
     def test_rate_used_directly_when_set(self):
@@ -387,12 +387,18 @@ class TestBatteryTouProcessor(unittest.TestCase):
         setpoints, _ = battery_tou_processor(data, _make_param(bat))
         self.assertLessEqual(setpoints['Battery bat Power Command [kW]'], 30.0)
 
-    def test_power_is_non_negative(self):
+    def test_power_sign_matches_mode(self):
+        # charge/idle hours must be non-negative; discharge hours must be non-positive
+        discharge_hours = {h for start, end, mode, _ in default_config()['tou_windows']
+                           if mode == 'discharge' for h in range(start, end)}
         for hour in [1, 7, 12, 18, 22]:
             data = _make_data(hour=hour)
             setpoints, _ = battery_tou_processor(data, _make_param())
-            self.assertGreaterEqual(setpoints['Battery bat Power Command [kW]'], 0.0,
-                                    msg=f'negative power at hour {hour}')
+            sp = setpoints['Battery bat Power Command [kW]']
+            if hour in discharge_hours:
+                self.assertLessEqual(sp, 0.0, msg=f'discharge power positive at hour {hour}')
+            else:
+                self.assertGreaterEqual(sp, 0.0, msg=f'non-discharge power negative at hour {hour}')
 
     # Multiple batteries
     def test_multiple_batteries_each_get_setpoint(self):

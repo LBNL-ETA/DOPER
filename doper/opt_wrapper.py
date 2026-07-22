@@ -77,6 +77,7 @@ class DoperWrapper(eFMU):
     def compute(self):
         """Main compute."""
         st = time.time()
+        self.data = None
         msg = ""
         data = None
         objective = None

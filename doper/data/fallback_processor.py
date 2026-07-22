@@ -63,7 +63,7 @@ def _size_power(mode, hour_float, window_end_h, bat, config):
         energy_needed = max(0.0, (soc - soc_min) * capacity)
         if energy_needed <= 0.0:
             return 0.0
-        return min(max_discharge, energy_needed / hours_remaining * safety_factor)
+        return -min(max_discharge, energy_needed / hours_remaining * safety_factor)
 
     return 0.0
 
