@@ -37,7 +37,12 @@ def _make_param(bat=None):
     """Helper: parameter dict with one battery."""
     if bat is None:
         bat = _make_bat()
-    return {'batteries': [bat]}
+    return {
+        'batteries': [bat],
+        'controller': {
+            'setpoint_names': {'battery_power': 'Battery %s Power Command [kW]'}
+        },
+    }
 
 
 # default_config tests
@@ -391,7 +396,10 @@ class TestBatteryTouProcessor(unittest.TestCase):
 
     # Multiple batteries
     def test_multiple_batteries_each_get_setpoint(self):
-        param = {'batteries': [_make_bat(name='bat1', soc=0.5), _make_bat(name='bat2', soc=0.8)]}
+        param = {
+            'batteries': [_make_bat(name='bat1', soc=0.5), _make_bat(name='bat2', soc=0.8)],
+            'controller': {'setpoint_names': {'battery_power': 'Battery %s Power Command [kW]'}},
+        }
         data = _make_data(hour=3)
         setpoints, _ = battery_tou_processor(data, param)
         self.assertIn('Battery bat1 Power Command [kW]', setpoints)
@@ -399,10 +407,13 @@ class TestBatteryTouProcessor(unittest.TestCase):
 
     # System clock fallback
     def test_uses_system_clock_when_data_is_none(self):
-        fixed_ts = datetime(2024, 6, 15, 3, 0, 0)
+        fixed_ts = datetime(2024, 6, 15, 3, 0, 0, tzinfo=__import__('datetime').timezone.utc)
+        param = _make_param(_make_bat(soc=0.5))
+        param['site'] = {'local_timezone': 'America/Los_Angeles'}
         with patch('doper.data.fallback_processor.datetime') as mock_dt:
             mock_dt.now.return_value = fixed_ts
-            setpoints, log = battery_tou_processor(None, _make_param(_make_bat(soc=0.5)))
+            mock_dt.timezone = __import__('datetime').timezone
+            setpoints, log = battery_tou_processor(None, param)
         self.assertIn('Battery bat Power Command [kW]', setpoints)
         self.assertTrue(any('system time' in m for m in log['messages']))
 

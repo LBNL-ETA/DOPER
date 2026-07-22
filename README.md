@@ -196,7 +196,7 @@ parameter['controller']['fb_processor'] = {
 }
 ```
 
-The fallback processor returns `(setpoints, log)` where `setpoints` keys are formatted strings (default `'Battery %s Power Command [kW]'` with the battery display name substituted) and values are plain floats. `log` contains `hour`, `messages`, and `overrides`.
+The fallback processor returns `(setpoints, log)` where `setpoints` keys are formatted strings (battery display name substituted via `%s`) and values are plain floats. `log` contains `hour`, `messages`, and `overrides`. The key template is **required** and must be provided via `parameter['controller']['setpoint_names']['battery_power']`.
 
 ##### Setpoint names
 
@@ -247,7 +247,6 @@ parameter['battery_tou_processor_config'] = {
     'safety_factor': 1.15,            # headroom above average rate (default 1.0)
     'min_hours_remaining': 0.25,      # minimum window remainder [h] (default 0)
     'emergency_recovery_hours': 2.0,  # recovery window when soc < soc_min
-    'setpoint_name': 'Battery %s Power Command [kW]', # fallback key template (used when setpoint_names not set)
     'setpoint_scale': 1,              # multiply power_kW before writing to setpoints
 }
 ```

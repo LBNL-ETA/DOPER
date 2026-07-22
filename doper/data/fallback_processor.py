@@ -14,7 +14,7 @@ TOU-based battery fallback for DoperWrapper:
     }
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 import pandas as pd
 
 def default_config():
@@ -32,7 +32,6 @@ def default_config():
         'safety_factor': 1.0, # set to greater than 1 for accelerated charging/discharging
         'min_hours_remaining': 0, # set minimal hours of discharge remaining above soc_min
         'emergency_recovery_hours': 2.0, # charging time when soc < soc_min
-        'setpoint_name': 'Battery %s Power Command [kW]', # format string for setpoint
         'setpoint_scale': 1, # scale of setpoint
     }
 
@@ -109,7 +108,9 @@ def battery_tou_processor(data, parameter):
         current_ts = data.index[0]
         log['messages'].append(f'using data time: {current_ts}')
     if current_ts is None:
-        current_ts = pd.Timestamp(datetime.now())
+        current_ts = pd.Timestamp(datetime.now(tz=timezone.utc))
+        tz = parameter['site']['local_timezone']
+        current_ts = current_ts.tz_convert(tz)
         log['messages'].append(f'using system time: {current_ts}')
     hour_float = current_ts.hour + current_ts.minute / 60.0
     log['hour'] = hour_float
@@ -118,10 +119,8 @@ def battery_tou_processor(data, parameter):
     mode, window_end_h, rate = _get_window(hour_float, cfg)
 
     # Resolve setpoint name template
-    sp_names = {}
-    if 'controller' in parameter and 'setpoint_names' in parameter['controller']:
-        sp_names = parameter['controller']['setpoint_names']
-    template = sp_names['battery_power'] if 'battery_power' in sp_names else cfg['setpoint_name']
+    sp_names = parameter['controller']['setpoint_names']
+    template = sp_names['battery_power']
     battery_name_map = sp_names['battery_name_map'] if 'battery_name_map' in sp_names else {}
 
     # Apply battery setpoints

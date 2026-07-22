@@ -886,7 +886,7 @@ def test_default_parameter():
     parameter['site']['regulation_reserved_variable_battery'] = False # Flag to reserve battery capacity for regulation (variable ts)
     parameter['site']['import_max'] = 10000 # kW
     parameter['site']['export_max'] = 20 # kW
-    parameter['site']['demand_periods_prev'] = {0:0,1:0,2:0} # kW peak previously set for periods 0-offpeak, 1-midpeak, 2-onpeak
+    parameter['site']['demand_periods_prev'] = {0:0, 1:0, 2:0} # kW peak previously set for periods 0-offpeak, 1-midpeak, 2-onpeak
     parameter['site']['demand_coincident_prev'] = 0 # kW peak previously set for coincident
     parameter['site']['input_timezone'] = -8 # Timezone of inputs (in hourly offset from UTC)
     parameter['site']['local_timezone'] = 'America/Los_Angeles' # Local timezone of tariff (as Python timezone string)

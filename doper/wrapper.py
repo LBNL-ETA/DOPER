@@ -299,10 +299,16 @@ class DOPER:
         self.initialize_model(self.data)
         with SolverFactory(self.solver_name, executable=self.solver_path) as solver:
             t_start = time()
+
+            # set solver options
             for k in options.keys():
                 solver.options[k] = options[k]
+
+            # run optimization
             result = solver.solve(self.model, load_solutions=False, tee=tee,
                                   keepfiles=keepfiles, report_timing=report_timing)
+            
+            # check termination
             termination = result.solver.termination_condition
             if termination == TerminationCondition.optimal \
                               and 'cbc' in str(result.solver).lower() \
@@ -310,20 +316,25 @@ class DOPER:
                 termination = TerminationCondition.infeasible # CBC does not report infeasible
             if termination != TerminationCondition.optimal and print_error:
                 logger.warning(f'Solver did not report optimality:\n{result.solver}')
-            try:
-                self.model.solutions.load_from(result)
-            except Exception as e:
-                if print_error:
-                    logger.warning(f'Could not load solutions:\n{e}')
-            if termination in ([TerminationCondition.optimal] + other_valid_terminations) \
-                and process_outputs:
-                objective = self.model.objective()
-                df = self.write_ts_results()
-                self.summary = generate_summary_metrics(self.model)
-            else:
-                objective = None
-                df = pd.DataFrame()
-                self.summary = None
+
+            # outputs
+            objective = None
+            df = pd.DataFrame()
+            self.summary = None
+            if termination in ([TerminationCondition.optimal] + other_valid_terminations):
+                try:
+                    # load solution
+                    self.model.solutions.load_from(result)
+
+                    # process outputs
+                    if process_outputs:
+                        objective = self.model.objective()
+                        df = self.write_ts_results()
+                        self.summary = generate_summary_metrics(self.model)
+                except Exception as e:
+                    if print_error:
+                        logger.warning(f'Could not load solutions:\n{e}')
+
             # if self.pyomo_to_pandas and termination == TerminationCondition.optimal:
             #     df = self.pyomo_to_pandas(self.model, self.parameter)
             # else:
