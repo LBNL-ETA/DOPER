@@ -197,7 +197,7 @@ class DoperWrapper(eFMU):
         # fallback processor
         if msg or not objective or not isinstance(df, pd.DataFrame):
             if self.fb_processor:
-                setpoints, log = self.fb_processor(data, self.parameter)
+                setpoints, log = self.fb_processor(self.data, self.parameter)
                 ext_logs[self.fb_processor.__module__] = log
 
         # write outputs
