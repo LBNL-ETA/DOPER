@@ -255,14 +255,14 @@ parameter['battery_tou_processor_config'] = {
 
 ##### `pv_excess_only` flag
 
-Each TOU window entry is a 5-tuple `(start_h, end_h, mode, rate, pv_excess_only)`. When `pv_excess_only=True` on a `charge` window, the charge power is capped at the available excess PV at the current timestep:
+Each TOU window entry is a 5-tuple `(start_h, end_h, mode, rate, pv_excess_only)`. When `pv_excess_only=True` on a `charge` window, the energy/time sizing calculation and any fixed `rate` are bypassed. Instead, the battery charges at the full available excess PV, capped only by the hardware maximum charge power:
 
 ```
-excess_pv = max(0, data["generation_pv"].iloc[0] - data["load_demand"].iloc[0])
-charge_power = min(sized_or_fixed_power, excess_pv)
+excess_pv    = max(0, data["generation_pv"].iloc[0] - data["load_demand"].iloc[0])
+charge_power = min(excess_pv, bat["power_charge"])
 ```
 
-This prevents grid charging and only uses solar power that would otherwise be exported. If `generation_pv` is absent from the data or there is no excess (load ≥ PV), charge power is set to `0`. The flag has no effect on `discharge` or `idle` windows. A log message is written to `log["messages"]` whenever the cap is applied.
+This absorbs all surplus solar that would otherwise be exported, without limiting the rate to what a time-based sizing calculation would recommend. If `generation_pv` is absent from the data or there is no excess (load ≥ PV), charge power is `0`. The flag has no effect on `discharge` or `idle` windows. A log message is written to `log["messages"]` whenever the mode is active.
 
 Safety overrides always apply on top of the rate or calculated power:
 - `soc < soc_min` → emergency charge sized to recover within `emergency_recovery_hours`

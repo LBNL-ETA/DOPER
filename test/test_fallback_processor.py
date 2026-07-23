@@ -570,17 +570,35 @@ class TestBatteryTouProcessor(unittest.TestCase):
         self.assertEqual(log['overrides'], [])
 
     # pv_excess_only tests
-    def test_pv_excess_only_caps_charge_at_excess(self):
-        """Charge power capped at excess PV (pv - load) when pv_excess_only=True."""
-        # sized power = (1.0-0.5)*200 / 10h * 1.0 = 10 kW; excess = 25-10 = 15 kW → 10 kW wins
+    def test_pv_excess_only_charges_at_excess_rate(self):
+        """Charge power equals excess PV when pv_excess_only=True and excess < max_charge."""
+        # excess = 25-10 = 15 kW; max_charge = 50 kW → power = min(15, 50) = 15 kW
         bat = _make_bat(soc=0.5, capacity=200, power_charge=50)
         data = _make_data(hour=3, load=10.0, pv=25.0)
         param = _make_param(bat)
         param['battery_tou_processor_config'] = _pv_excess_config(0, 10)
         setpoints, _ = battery_tou_processor(data, param)
-        # sized = 100/7/1 ≈ 14.3 kW; excess = 15 kW → sized wins (14.3 < 15)
-        self.assertGreater(setpoints['Battery bat Power Command [kW]'], 0.0)
-        self.assertLessEqual(setpoints['Battery bat Power Command [kW]'], 15.0)
+        self.assertAlmostEqual(setpoints['Battery bat Power Command [kW]'], 15.0, places=3)
+
+    def test_pv_excess_only_capped_by_max_charge(self):
+        """Charge power is capped at bat['power_charge'] even when excess is larger."""
+        # excess = 100-10 = 90 kW; max_charge = 50 kW → power = min(90, 50) = 50 kW
+        bat = _make_bat(soc=0.5, capacity=200, power_charge=50)
+        data = _make_data(hour=3, load=10.0, pv=100.0)
+        param = _make_param(bat)
+        param['battery_tou_processor_config'] = _pv_excess_config(0, 10)
+        setpoints, _ = battery_tou_processor(data, param)
+        self.assertAlmostEqual(setpoints['Battery bat Power Command [kW]'], 50.0, places=3)
+
+    def test_pv_excess_only_ignores_sized_power(self):
+        """pv_excess_only bypasses energy/time sizing; charges at excess regardless of sized power."""
+        # soc=0.5, window 0-10h, hour=3 → sized≈14.3 kW; excess=20 kW → power=20 (not 14.3)
+        bat = _make_bat(soc=0.5, capacity=200, power_charge=50)
+        data = _make_data(hour=3, load=10.0, pv=30.0) # excess=20 kW > sized≈14.3
+        param = _make_param(bat)
+        param['battery_tou_processor_config'] = _pv_excess_config(0, 10)
+        setpoints, _ = battery_tou_processor(data, param)
+        self.assertAlmostEqual(setpoints['Battery bat Power Command [kW]'], 20.0, places=3)
 
     def test_pv_excess_only_limited_by_small_excess(self):
         """When excess PV < sized power, charge is capped at the excess value."""
@@ -643,22 +661,21 @@ class TestBatteryTouProcessor(unittest.TestCase):
         setpoints, _ = battery_tou_processor(data, param)
         self.assertLess(setpoints['Battery bat Power Command [kW]'], 0.0)
 
-    def test_pv_excess_only_exact_cap_value(self):
-        """Charge power equals exactly min(sized_power, excess_pv)."""
-        # soc=0.5, soc_max=1.0, cap=200, eff=1, window 0-10h, hour=3 → hours_rem=7
-        # sized = 100/7 ≈ 14.286 kW; excess = 30-10 = 20 kW → capped at sized
+    def test_pv_excess_only_exact_value(self):
+        """Charge power equals min(excess_pv, max_charge), ignoring sized power."""
+        # excess = 30-10 = 20 kW; max_charge = 50 kW → power = 20 kW
         bat = _make_bat(soc=0.5, capacity=200, power_charge=50)
         data = _make_data(hour=3, load=10.0, pv=30.0)
         param = _make_param(bat)
         param['battery_tou_processor_config'] = _pv_excess_config(0, 10)
         setpoints, _ = battery_tou_processor(data, param)
-        expected = min(50.0, 100.0 / 7.0) # sized wins; excess=20 > sized≈14.3
-        self.assertAlmostEqual(setpoints['Battery bat Power Command [kW]'], expected, places=2)
+        self.assertAlmostEqual(setpoints['Battery bat Power Command [kW]'], 20.0, places=3)
 
-    def test_pv_excess_only_rate_override_still_capped(self):
-        """Fixed rate is also capped at excess PV when pv_excess_only=True."""
-        # rate=30 kW, excess=5 kW → capped at 5
-        bat = _make_bat(soc=0.5)
+    def test_pv_excess_only_ignores_rate_field(self):
+        """pv_excess_only bypasses rate override; charges at min(excess, max_charge)."""
+        # rate=30 kW would normally be used, but pv_excess_only takes over
+        # excess=5 kW, max_charge=50 kW → power = min(5, 50) = 5 kW (not 30)
+        bat = _make_bat(soc=0.5, power_charge=50)
         data = _make_data(hour=3, load=10.0, pv=15.0) # excess=5
         param = _make_param(bat)
         param['battery_tou_processor_config'] = {
