@@ -34,6 +34,7 @@ def default_config():
         'min_hours_remaining': 0, # set minimal hours of discharge remaining above soc_min
         'emergency_recovery_hours': 2.0, # charging time when soc < soc_min
         'setpoint_scale': 1, # scale of setpoint
+        'soc_target': 1.0, # target SOC for battery_soc_processor
     }
 
 def _get_window(hour_float, config):
@@ -155,6 +156,77 @@ def battery_tou_processor(data, parameter):
         else:
             # Flat control until full/empty
             power_kw = _size_power(mode, hour_float, window_end_h, bat, cfg)
+
+        power_kw = _apply_safety_overrides(power_kw, mode, bat, cfg, log)
+        sp = float(round(power_kw * cfg['setpoint_scale'], 3))
+        display_name = battery_name_map[bat['name']] if bat['name'] in battery_name_map else bat['name']
+        setpoints[template % display_name] = sp
+
+    return setpoints, log
+
+def battery_soc_processor(data, parameter):
+    """SOC-target fallback setpoint processor.
+
+    Charges when soc < soc_target, discharges when soc > soc_target.
+    Power rate is taken from the matching tou_windows entry:
+      - rate is None  -> use maximum hardware rate (power_charge / power_discharge)
+      - rate is set   -> use that rate, clipped to hardware limits
+    """
+
+    setpoints = {}
+    log = {'messages': [], 'overrides': [], 'hour': None}
+
+    # Check if battery present
+    if not parameter or 'batteries' not in parameter or not parameter['batteries']:
+        return setpoints, log
+    batteries = parameter['batteries']
+
+    # Get config
+    cfg = default_config()
+    if 'battery_soc_processor_config' in parameter:
+        cfg.update(parameter['battery_soc_processor_config'])
+
+    # Current time from data or system clock
+    current_ts = None
+    if isinstance(data, pd.DataFrame) and not data.empty:
+        current_ts = data.index[0]
+        log['messages'].append(f'using data time: {current_ts}')
+    if current_ts is None:
+        current_ts = pd.Timestamp(datetime.now(tz=timezone.utc))
+        tz = parameter['site']['local_timezone']
+        current_ts = current_ts.tz_convert(tz)
+        log['messages'].append(f'using system time: {current_ts}')
+    hour_float = current_ts.hour + current_ts.minute / 60.0
+    log['hour'] = hour_float
+
+    # Rate from tou_windows (mode field is ignored; direction comes from SOC vs target)
+    _, _, rate, _ = _get_window(hour_float, cfg)
+
+    # Resolve setpoint name template
+    sp_names = parameter['controller']['setpoint_names']
+    template = sp_names['battery_power']
+    battery_name_map = sp_names['battery_name_map'] if 'battery_name_map' in sp_names else {}
+
+    soc_target = cfg['soc_target']
+
+    for bat in batteries:
+        soc = bat['soc_initial']
+
+        if soc < soc_target:
+            mode = 'charge'
+            if rate is None:
+                power_kw = bat['power_charge']
+            else:
+                power_kw = min(abs(rate), bat['power_charge'])
+        elif soc > soc_target:
+            mode = 'discharge'
+            if rate is None:
+                power_kw = -bat['power_discharge']
+            else:
+                power_kw = -min(abs(rate), bat['power_discharge'])
+        else:
+            mode = 'idle'
+            power_kw = 0.0
 
         power_kw = _apply_safety_overrides(power_kw, mode, bat, cfg, log)
         sp = float(round(power_kw * cfg['setpoint_scale'], 3))
