@@ -235,14 +235,16 @@ The TOU schedule and all sizing parameters can be overridden via `parameter['bat
 
 ```python
 parameter['battery_tou_processor_config'] = {
-    # (start_h, end_h, mode, rate)
+    # (start_h, end_h, mode, rate, pv_excess_only)
     # rate [kW]: when set, used directly instead of the energy/time calculation
+    # pv_excess_only: when True, charge power is capped at excess PV generation
+    #   excess PV = max(0, data["generation_pv"] - data["load_demand"])
     'tou_windows': [
-        (0,  6,  'charge',    None),   # size to fill SOC by 06:00
-        (6,  9,  'idle',      None),
-        (9,  15, 'charge',    None),   # size to fill SOC by 15:00
-        (15, 21, 'discharge', 30.0),   # fixed 30 kW discharge
-        (21, 24, 'idle',      None),
+        (0,  6,  'charge',    None,  True),   # charge from excess PV only, size to 06:00
+        (6,  9,  'idle',      None,  False),
+        (9,  15, 'charge',    None,  False),  # charge normally, size to 15:00
+        (15, 21, 'discharge', 30.0,  False),  # fixed 30 kW discharge
+        (21, 24, 'idle',      None,  False),
     ],
     'safety_factor': 1.15,            # headroom above average rate (default 1.0)
     'min_hours_remaining': 0.25,      # minimum window remainder [h] (default 0)
@@ -250,6 +252,17 @@ parameter['battery_tou_processor_config'] = {
     'setpoint_scale': 1,              # multiply power_kW before writing to setpoints
 }
 ```
+
+##### `pv_excess_only` flag
+
+Each TOU window entry is a 5-tuple `(start_h, end_h, mode, rate, pv_excess_only)`. When `pv_excess_only=True` on a `charge` window, the charge power is capped at the available excess PV at the current timestep:
+
+```
+excess_pv = max(0, data["generation_pv"].iloc[0] - data["load_demand"].iloc[0])
+charge_power = min(sized_or_fixed_power, excess_pv)
+```
+
+This prevents grid charging and only uses solar power that would otherwise be exported. If `generation_pv` is absent from the data or there is no excess (load ≥ PV), charge power is set to `0`. The flag has no effect on `discharge` or `idle` windows. A log message is written to `log["messages"]` whenever the cap is applied.
 
 Safety overrides always apply on top of the rate or calculated power:
 - `soc < soc_min` → emergency charge sized to recover within `emergency_recovery_hours`

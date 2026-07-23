@@ -7,6 +7,7 @@ from datetime import datetime
 import pandas as pd
 
 from doper.data.fallback_processor import (
+    _get_excess_pv,
     _get_window,
     _size_power,
     _apply_safety_overrides,
@@ -15,10 +16,13 @@ from doper.data.fallback_processor import (
 )
 
 
-def _make_data(hour=2):
+def _make_data(hour=2, load=10.0, pv=None):
     """Helper: single-row DataFrame at the given hour of 2019-01-01."""
     ts = pd.Timestamp(f'2019-01-01 {hour:02d}:00:00')
-    return pd.DataFrame({'load_demand': [10.0]}, index=[ts])
+    row = {'load_demand': [load]}
+    if pv is not None:
+        row['generation_pv'] = [pv]
+    return pd.DataFrame(row, index=[ts])
 
 def _make_bat(name='bat', soc=0.5, soc_min=0.2, soc_max=1.0,
               capacity=200.0, power_charge=50.0, power_discharge=50.0,
@@ -47,6 +51,15 @@ def _make_param(bat=None):
         },
     }
 
+def _pv_excess_config(hour_start=0, hour_end=10):
+    """Helper: config with pv_excess_only=True for one charge window."""
+    return {
+        'tou_windows': [
+            (hour_start, hour_end, 'charge', None, True),
+            (hour_end, 24, 'idle', None, False),
+        ]
+    }
+
 
 # default_config tests
 class TestDefaultConfig(unittest.TestCase):
@@ -63,15 +76,25 @@ class TestDefaultConfig(unittest.TestCase):
     def test_tou_windows_has_four_entries(self):
         self.assertEqual(len(default_config()['tou_windows']), 4)
 
+    def test_tou_windows_are_five_tuples(self):
+        cfg = default_config()
+        for entry in cfg['tou_windows']:
+            self.assertEqual(len(entry), 5, msg=f'expected 5-tuple, got {entry}')
+
     def test_modes_are_lowercase(self):
         cfg = default_config()
-        for _, _, mode, _ in cfg['tou_windows']:
+        for _, _, mode, _, _ in cfg['tou_windows']:
             self.assertEqual(mode, mode.lower())
 
     def test_tou_windows_rate_defaults_to_none(self):
         cfg = default_config()
-        for _, _, _, rate in cfg['tou_windows']:
+        for _, _, _, rate, _ in cfg['tou_windows']:
             self.assertIsNone(rate)
+
+    def test_tou_windows_pv_excess_only_defaults_to_false(self):
+        cfg = default_config()
+        for _, _, _, _, pv_excess_only in cfg['tou_windows']:
+            self.assertFalse(pv_excess_only)
 
 
 # _get_window tests
@@ -82,27 +105,28 @@ class TestGetWindow(unittest.TestCase):
         self.cfg = default_config()
 
     def test_overnight_returns_charge(self):
-        mode, end_h, rate = _get_window(0.0, self.cfg)
+        mode, end_h, rate, pv_excess_only = _get_window(0.0, self.cfg)
         self.assertEqual(mode, 'charge')
         self.assertEqual(end_h, 10)
         self.assertIsNone(rate)
+        self.assertFalse(pv_excess_only)
 
     def test_overnight_midpoint(self):
         mode, *_ = _get_window(3.0, self.cfg)
         self.assertEqual(mode, 'charge')
 
     def test_morning_boundary_is_idle(self):
-        mode, _, rate = _get_window(10.0, self.cfg)
+        mode, _, rate, _ = _get_window(10.0, self.cfg)
         self.assertEqual(mode, 'idle')
         self.assertIsNone(rate)
 
     def test_midday_window(self):
-        mode, end_h, _ = _get_window(12.0, self.cfg)
+        mode, end_h, _, _ = _get_window(12.0, self.cfg)
         self.assertEqual(mode, 'idle')
         self.assertEqual(end_h, 15)
 
     def test_peak_window_is_discharge(self):
-        mode, end_h, _ = _get_window(18.0, self.cfg)
+        mode, end_h, _, _ = _get_window(18.0, self.cfg)
         self.assertEqual(mode, 'discharge')
         self.assertEqual(end_h, 21)
 
@@ -116,9 +140,71 @@ class TestGetWindow(unittest.TestCase):
 
     def test_rate_returned_when_set(self):
         cfg = default_config()
-        cfg['tou_windows'][2] = (15, 21, 'discharge', 30.0)
-        _, _, rate = _get_window(18.0, cfg)
+        cfg['tou_windows'][2] = (15, 21, 'discharge', 30.0, False)
+        _, _, rate, _ = _get_window(18.0, cfg)
         self.assertEqual(rate, 30.0)
+
+    def test_pv_excess_only_returned_when_set(self):
+        cfg = default_config()
+        cfg['tou_windows'][0] = (0, 10, 'charge', None, True)
+        _, _, _, pv_excess_only = _get_window(3.0, cfg)
+        self.assertTrue(pv_excess_only)
+
+    def test_pv_excess_only_false_in_other_windows(self):
+        cfg = default_config()
+        cfg['tou_windows'][0] = (0, 10, 'charge', None, True)
+        _, _, _, pv_excess_only = _get_window(18.0, cfg) # discharge window
+        self.assertFalse(pv_excess_only)
+
+    def test_unmatched_hour_returns_idle_defaults(self):
+        mode, end_h, rate, pv_excess_only = _get_window(24.0, self.cfg)
+        self.assertEqual(mode, 'idle')
+        self.assertEqual(end_h, 24)
+        self.assertIsNone(rate)
+        self.assertFalse(pv_excess_only)
+
+
+# _get_excess_pv tests
+class TestGetExcessPv(unittest.TestCase):
+    """Tests for the _get_excess_pv helper."""
+
+    def test_excess_pv_when_generation_exceeds_load(self):
+        data = _make_data(load=10.0, pv=25.0)
+        self.assertAlmostEqual(_get_excess_pv(data), 15.0)
+
+    def test_zero_when_load_exceeds_generation(self):
+        data = _make_data(load=20.0, pv=5.0)
+        self.assertEqual(_get_excess_pv(data), 0.0)
+
+    def test_zero_when_load_equals_generation(self):
+        data = _make_data(load=10.0, pv=10.0)
+        self.assertEqual(_get_excess_pv(data), 0.0)
+
+    def test_returns_zero_when_data_is_none(self):
+        self.assertEqual(_get_excess_pv(None), 0.0)
+
+    def test_returns_zero_when_data_is_empty(self):
+        self.assertEqual(_get_excess_pv(pd.DataFrame()), 0.0)
+
+    def test_returns_zero_when_no_generation_pv_column(self):
+        # no pv column → pv treated as 0, load=10 → excess = max(0, 0-10) = 0
+        data = _make_data(load=10.0, pv=None)
+        self.assertEqual(_get_excess_pv(data), 0.0)
+
+    def test_returns_pv_when_no_load_column(self):
+        # no load column → load treated as 0, pv=15 → excess = 15
+        ts = pd.Timestamp('2019-01-01 09:00:00')
+        data = pd.DataFrame({'generation_pv': [15.0]}, index=[ts])
+        self.assertAlmostEqual(_get_excess_pv(data), 15.0)
+
+    def test_uses_first_row_only(self):
+        ts0 = pd.Timestamp('2019-01-01 09:00:00')
+        ts1 = pd.Timestamp('2019-01-01 09:15:00')
+        data = pd.DataFrame(
+            {'load_demand': [5.0, 50.0], 'generation_pv': [20.0, 0.0]},
+            index=[ts0, ts1],
+        )
+        self.assertAlmostEqual(_get_excess_pv(data), 15.0)
 
 
 # _size_power tests
@@ -288,11 +374,11 @@ class TestBatteryTouProcessor(unittest.TestCase):
         param = _make_param(_make_bat(soc=0.5))
         param['battery_tou_processor_config'] = {
             'tou_windows': [
-                (0, 6, 'charge', None),
-                (6, 9, 'idle', None),
-                (9, 15, 'charge', None),
-                (15, 21, 'discharge', 25.0),
-                (21, 24, 'idle', None),
+                (0, 6, 'charge', None, False),
+                (6, 9, 'idle', None, False),
+                (9, 15, 'charge', None, False),
+                (15, 21, 'discharge', 25.0, False),
+                (21, 24, 'idle', None, False),
             ]
         }
         setpoints, _ = battery_tou_processor(data, param)
@@ -303,11 +389,11 @@ class TestBatteryTouProcessor(unittest.TestCase):
         param = _make_param(_make_bat(soc=0.5))
         param['battery_tou_processor_config'] = {
             'tou_windows': [
-                (0, 6, 'charge', None),
-                (6, 9, 'idle', None),
-                (9, 15, 'charge', None),
-                (15, 21, 'discharge', None),
-                (21, 24, 'idle', None),
+                (0, 6, 'charge', None, False),
+                (6, 9, 'idle', None, False),
+                (9, 15, 'charge', None, False),
+                (15, 21, 'discharge', None, False),
+                (21, 24, 'idle', None, False),
             ]
         }
         setpoints, _ = battery_tou_processor(data, param)
@@ -370,7 +456,7 @@ class TestBatteryTouProcessor(unittest.TestCase):
         data = _make_data(hour=3)
         param = _make_param(_make_bat(soc=0.5))
         param['battery_tou_processor_config'] = {
-            'tou_windows': [(0, 24, 'idle', None)]
+            'tou_windows': [(0, 24, 'idle', None, False)]
         }
         setpoints, _ = battery_tou_processor(data, param)
         self.assertEqual(setpoints['Battery bat Power Command [kW]'], 0.0)
@@ -431,7 +517,7 @@ class TestBatteryTouProcessor(unittest.TestCase):
 
     def test_power_sign_matches_mode(self):
         # charge/idle hours must be non-negative; discharge hours must be non-positive
-        discharge_hours = {h for start, end, mode, _ in default_config()['tou_windows']
+        discharge_hours = {h for start, end, mode, _, _ in default_config()['tou_windows']
                            if mode == 'discharge' for h in range(start, end)}
         for hour in [1, 7, 12, 18, 22]:
             data = _make_data(hour=hour)
@@ -482,6 +568,107 @@ class TestBatteryTouProcessor(unittest.TestCase):
         data = _make_data(hour=3)
         _, log = battery_tou_processor(data, _make_param(bat))
         self.assertEqual(log['overrides'], [])
+
+    # pv_excess_only tests
+    def test_pv_excess_only_caps_charge_at_excess(self):
+        """Charge power capped at excess PV (pv - load) when pv_excess_only=True."""
+        # sized power = (1.0-0.5)*200 / 10h * 1.0 = 10 kW; excess = 25-10 = 15 kW → 10 kW wins
+        bat = _make_bat(soc=0.5, capacity=200, power_charge=50)
+        data = _make_data(hour=3, load=10.0, pv=25.0)
+        param = _make_param(bat)
+        param['battery_tou_processor_config'] = _pv_excess_config(0, 10)
+        setpoints, _ = battery_tou_processor(data, param)
+        # sized = 100/7/1 ≈ 14.3 kW; excess = 15 kW → sized wins (14.3 < 15)
+        self.assertGreater(setpoints['Battery bat Power Command [kW]'], 0.0)
+        self.assertLessEqual(setpoints['Battery bat Power Command [kW]'], 15.0)
+
+    def test_pv_excess_only_limited_by_small_excess(self):
+        """When excess PV < sized power, charge is capped at the excess value."""
+        # pv=12, load=10 → excess=2 kW; sized power will be larger
+        bat = _make_bat(soc=0.5, capacity=200, power_charge=50)
+        data = _make_data(hour=3, load=10.0, pv=12.0)
+        param = _make_param(bat)
+        param['battery_tou_processor_config'] = _pv_excess_config(0, 10)
+        setpoints, _ = battery_tou_processor(data, param)
+        self.assertAlmostEqual(setpoints['Battery bat Power Command [kW]'], 2.0, places=3)
+
+    def test_pv_excess_only_zero_when_no_excess(self):
+        """When load >= pv, no excess exists and charge power is 0."""
+        bat = _make_bat(soc=0.5, capacity=200, power_charge=50)
+        data = _make_data(hour=3, load=20.0, pv=5.0)
+        param = _make_param(bat)
+        param['battery_tou_processor_config'] = _pv_excess_config(0, 10)
+        setpoints, _ = battery_tou_processor(data, param)
+        self.assertEqual(setpoints['Battery bat Power Command [kW]'], 0.0)
+
+    def test_pv_excess_only_zero_when_no_pv_column(self):
+        """Missing generation_pv column → no excess → charge power is 0."""
+        bat = _make_bat(soc=0.5, capacity=200, power_charge=50)
+        data = _make_data(hour=3, load=10.0, pv=None) # no pv column
+        param = _make_param(bat)
+        param['battery_tou_processor_config'] = _pv_excess_config(0, 10)
+        setpoints, _ = battery_tou_processor(data, param)
+        self.assertEqual(setpoints['Battery bat Power Command [kW]'], 0.0)
+
+    def test_pv_excess_only_false_charges_normally(self):
+        """pv_excess_only=False with identical data charges at sized power ignoring PV."""
+        bat = _make_bat(soc=0.5, capacity=200, power_charge=50)
+        data_pv = _make_data(hour=3, load=20.0, pv=5.0) # load > pv (no excess)
+        param = _make_param(bat)
+        # default config: pv_excess_only=False in all windows
+        setpoints, _ = battery_tou_processor(data_pv, param)
+        self.assertGreater(setpoints['Battery bat Power Command [kW]'], 0.0)
+
+    def test_pv_excess_only_log_message_written(self):
+        """Log contains pv_excess_only message when flag is active."""
+        bat = _make_bat(soc=0.5, capacity=200, power_charge=50)
+        data = _make_data(hour=3, load=10.0, pv=20.0)
+        param = _make_param(bat)
+        param['battery_tou_processor_config'] = _pv_excess_config(0, 10)
+        _, log = battery_tou_processor(data, param)
+        self.assertTrue(any('pv_excess_only' in m for m in log['messages']))
+
+    def test_pv_excess_only_does_not_affect_discharge(self):
+        """pv_excess_only flag on a discharge window has no effect on discharge power."""
+        bat = _make_bat(soc=0.8, capacity=200, power_discharge=50)
+        data = _make_data(hour=18, load=10.0, pv=0.0)
+        param = _make_param(bat)
+        param['battery_tou_processor_config'] = {
+            'tou_windows': [
+                (0, 15, 'idle', None, False),
+                (15, 21, 'discharge', None, True), # pv_excess_only on discharge: no effect
+                (21, 24, 'idle', None, False),
+            ]
+        }
+        setpoints, _ = battery_tou_processor(data, param)
+        self.assertLess(setpoints['Battery bat Power Command [kW]'], 0.0)
+
+    def test_pv_excess_only_exact_cap_value(self):
+        """Charge power equals exactly min(sized_power, excess_pv)."""
+        # soc=0.5, soc_max=1.0, cap=200, eff=1, window 0-10h, hour=3 → hours_rem=7
+        # sized = 100/7 ≈ 14.286 kW; excess = 30-10 = 20 kW → capped at sized
+        bat = _make_bat(soc=0.5, capacity=200, power_charge=50)
+        data = _make_data(hour=3, load=10.0, pv=30.0)
+        param = _make_param(bat)
+        param['battery_tou_processor_config'] = _pv_excess_config(0, 10)
+        setpoints, _ = battery_tou_processor(data, param)
+        expected = min(50.0, 100.0 / 7.0) # sized wins; excess=20 > sized≈14.3
+        self.assertAlmostEqual(setpoints['Battery bat Power Command [kW]'], expected, places=2)
+
+    def test_pv_excess_only_rate_override_still_capped(self):
+        """Fixed rate is also capped at excess PV when pv_excess_only=True."""
+        # rate=30 kW, excess=5 kW → capped at 5
+        bat = _make_bat(soc=0.5)
+        data = _make_data(hour=3, load=10.0, pv=15.0) # excess=5
+        param = _make_param(bat)
+        param['battery_tou_processor_config'] = {
+            'tou_windows': [
+                (0, 10, 'charge', 30.0, True),
+                (10, 24, 'idle', None, False),
+            ]
+        }
+        setpoints, _ = battery_tou_processor(data, param)
+        self.assertAlmostEqual(setpoints['Battery bat Power Command [kW]'], 5.0, places=3)
 
 
 if __name__ == '__main__':

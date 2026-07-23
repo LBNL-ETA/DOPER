@@ -20,13 +20,15 @@ import pandas as pd
 def default_config():
     """Return default TOU processor configuration dict."""
     return {
-        # (start_h, end_h, mode, rate)
+        # (start_h, end_h, mode, rate, pv_excess_only)
         # rate [kW] overrides window calculation when set
+        # pv_excess_only: when True, charge power is capped at excess PV
+        #   (i.e. max(0, generation_pv - load_demand) from data)
         'tou_windows': [
-            (0, 10, 'charge', None),
-            (10, 15, 'idle', None),
-            (15, 21, 'discharge', None),
-            (21, 24, 'idle', None),
+            (0, 10, 'charge', None, False),
+            (10, 15, 'idle', None, False),
+            (15, 21, 'discharge', None, False),
+            (21, 24, 'idle', None, False),
         ],
         'safety_factor': 1.0, # set to greater than 1 for accelerated charging/discharging
         'min_hours_remaining': 0, # set minimal hours of discharge remaining above soc_min
@@ -35,11 +37,20 @@ def default_config():
     }
 
 def _get_window(hour_float, config):
-    """Return (mode, end_h, rate) for the given fractional hour."""
-    for start_h, end_h, mode, rate in config['tou_windows']:
+    """Return (mode, end_h, rate, pv_excess_only) for the given fractional hour."""
+    for entry in config['tou_windows']:
+        start_h, end_h, mode, rate, pv_excess_only = entry
         if start_h <= hour_float < end_h:
-            return mode, end_h, rate
-    return 'idle', 24, None
+            return mode, end_h, rate, pv_excess_only
+    return 'idle', 24, None, False
+
+def _get_excess_pv(data):
+    """Return excess PV [kW]: max(0, generation_pv - load_demand) from first data row."""
+    if not isinstance(data, pd.DataFrame) or data.empty:
+        return 0.0
+    pv = data['generation_pv'].iloc[0] if 'generation_pv' in data.columns else 0.0
+    load = data['load_demand'].iloc[0] if 'load_demand' in data.columns else 0.0
+    return max(0.0, pv - load)
 
 def _size_power(mode, hour_float, window_end_h, bat, config):
     """Return power setpoint [kW] sized from battery state and remaining window time."""
@@ -118,7 +129,7 @@ def battery_tou_processor(data, parameter):
     log['hour'] = hour_float
 
     # Get active mode
-    mode, window_end_h, rate = _get_window(hour_float, cfg)
+    mode, window_end_h, rate, pv_excess_only = _get_window(hour_float, cfg)
 
     # Resolve setpoint name template
     sp_names = parameter['controller']['setpoint_names']
@@ -128,6 +139,16 @@ def battery_tou_processor(data, parameter):
     # Apply battery setpoints
     for bat in batteries:
         power_kw = rate if rate is not None else _size_power(mode, hour_float, window_end_h, bat, cfg)
+
+        # Cap charge at excess PV when flag is set
+        if pv_excess_only and mode == 'charge':
+            excess_pv = _get_excess_pv(data)
+            power_kw = min(power_kw, excess_pv)
+            log['messages'].append(
+                f'{bat["name"]}: pv_excess_only, excess_pv={excess_pv:.2f} kW, '
+                f'charge capped at {power_kw:.2f} kW'
+            )
+
         power_kw = _apply_safety_overrides(power_kw, mode, bat, cfg, log)
         sp = float(round(power_kw * cfg['setpoint_scale'], 3))
         display_name = battery_name_map[bat['name']] if bat['name'] in battery_name_map else bat['name']
