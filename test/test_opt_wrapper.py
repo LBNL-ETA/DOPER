@@ -581,7 +581,7 @@ class TestOptWrapperFallbackProcessor(unittest.TestCase):
         }
         # Force a fixed discharge rate regardless of hour
         cfg['battery_tou_processor_config'] = {
-            'tou_windows': [(0, 24, 'discharge', 10.0)]
+            'tou_windows': [(0, 24, 'discharge', 10.0, False)]
         }
         forecast_json = self._make_forecast_json(cfg)
 
