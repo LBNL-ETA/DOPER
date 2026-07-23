@@ -371,7 +371,7 @@ class TestBatteryTouProcessor(unittest.TestCase):
     # Rate override
     def test_rate_used_directly_when_set(self):
         data = _make_data(hour=18)
-        param = _make_param(_make_bat(soc=0.5))
+        param = _make_param(_make_bat(soc=0.5, power_discharge=50))
         param['battery_tou_processor_config'] = {
             'tou_windows': [
                 (0, 6, 'charge', None, False),
@@ -383,6 +383,45 @@ class TestBatteryTouProcessor(unittest.TestCase):
         }
         setpoints, _ = battery_tou_processor(data, param)
         self.assertAlmostEqual(setpoints['Battery bat Power Command [kW]'], 25.0, places=3)
+
+    def test_rate_clipped_to_max_charge(self):
+        """Positive rate exceeding bat power_charge is clipped to power_charge."""
+        data = _make_data(hour=3)
+        param = _make_param(_make_bat(soc=0.5, power_charge=20.0))
+        param['battery_tou_processor_config'] = {
+            'tou_windows': [(0, 10, 'charge', 50.0, False), (10, 24, 'idle', None, False)]
+        }
+        setpoints, _ = battery_tou_processor(data, param)
+        self.assertAlmostEqual(setpoints['Battery bat Power Command [kW]'], 20.0, places=3)
+
+    def test_rate_clipped_to_max_discharge(self):
+        """Negative rate exceeding bat power_discharge magnitude is clipped."""
+        data = _make_data(hour=18)
+        param = _make_param(_make_bat(soc=0.8, power_discharge=20.0))
+        param['battery_tou_processor_config'] = {
+            'tou_windows': [
+                (0, 15, 'idle', None, False),
+                (15, 21, 'discharge', -60.0, False),
+                (21, 24, 'idle', None, False),
+            ]
+        }
+        setpoints, _ = battery_tou_processor(data, param)
+        self.assertAlmostEqual(setpoints['Battery bat Power Command [kW]'], -20.0, places=3)
+
+    def test_rate_overrides_pv_excess_only(self):
+        """Fixed rate takes precedence over pv_excess_only; rate is clipped to power_charge."""
+        # rate=30 kW, excess=5 kW, max_charge=50 kW → power = min(30, 50) = 30 (not 5)
+        bat = _make_bat(soc=0.5, power_charge=50)
+        data = _make_data(hour=3, load=10.0, pv=15.0) # excess=5
+        param = _make_param(bat)
+        param['battery_tou_processor_config'] = {
+            'tou_windows': [
+                (0, 10, 'charge', 30.0, True),
+                (10, 24, 'idle', None, False),
+            ]
+        }
+        setpoints, _ = battery_tou_processor(data, param)
+        self.assertAlmostEqual(setpoints['Battery bat Power Command [kW]'], 30.0, places=3)
 
     def test_none_rate_uses_calculation(self):
         data = _make_data(hour=3)
@@ -671,21 +710,6 @@ class TestBatteryTouProcessor(unittest.TestCase):
         setpoints, _ = battery_tou_processor(data, param)
         self.assertAlmostEqual(setpoints['Battery bat Power Command [kW]'], 20.0, places=3)
 
-    def test_pv_excess_only_ignores_rate_field(self):
-        """pv_excess_only bypasses rate override; charges at min(excess, max_charge)."""
-        # rate=30 kW would normally be used, but pv_excess_only takes over
-        # excess=5 kW, max_charge=50 kW → power = min(5, 50) = 5 kW (not 30)
-        bat = _make_bat(soc=0.5, power_charge=50)
-        data = _make_data(hour=3, load=10.0, pv=15.0) # excess=5
-        param = _make_param(bat)
-        param['battery_tou_processor_config'] = {
-            'tou_windows': [
-                (0, 10, 'charge', 30.0, True),
-                (10, 24, 'idle', None, False),
-            ]
-        }
-        setpoints, _ = battery_tou_processor(data, param)
-        self.assertAlmostEqual(setpoints['Battery bat Power Command [kW]'], 5.0, places=3)
 
 
 if __name__ == '__main__':

@@ -138,8 +138,14 @@ def battery_tou_processor(data, parameter):
 
     # Apply battery setpoints
     for bat in batteries:
-        if pv_excess_only and mode == 'charge':
-            # Charge at excess PV rate, capped by battery max charge power
+        if rate is not None:
+            # Fixed rate clip to battery hardware limits
+            if rate >= 0:
+                power_kw = min(rate, bat['power_charge'])
+            else:
+                power_kw = max(rate, -bat['power_discharge'])
+        elif pv_excess_only and mode == 'charge':
+            # Charge at excess PV rate
             excess_pv = _get_excess_pv(data)
             power_kw = min(excess_pv, bat['power_charge'])
             log['messages'].append(
@@ -147,7 +153,8 @@ def battery_tou_processor(data, parameter):
                 f'charge at {power_kw:.2f} kW'
             )
         else:
-            power_kw = rate if rate is not None else _size_power(mode, hour_float, window_end_h, bat, cfg)
+            # Flat control until full/empty
+            power_kw = _size_power(mode, hour_float, window_end_h, bat, cfg)
 
         power_kw = _apply_safety_overrides(power_kw, mode, bat, cfg, log)
         sp = float(round(power_kw * cfg['setpoint_scale'], 3))
