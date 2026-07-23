@@ -308,18 +308,28 @@ def calculate_energy_cost(data, tariff, types=None, col_suffix='_Net Load [kW]',
             + cost[t + ' RTP Cost [$]']
             - cost[t + ' Export Revenue [$]']
         )
-        cost_daily[t + ' Total Demand Cost Cum [$]'] = (
-            cost_daily[[t + ' Demand Period ' + str(c) + ' Cost Cum [$]' for c in range(3)]].sum(axis=1)
-            + cost_daily[t + ' Demand Coincident Cost Cum [$]']
-        )
-        cost_daily[t + ' Total Energy Cost Cum [$]'] = (
-            cost_daily[t + ' Energy Cost Cum [$]'] + cost_daily[t + ' Total Demand Cost Cum [$]']
-        )
-        cost_daily[t + ' Net Energy Cost Cum [$]'] = (
-            cost_daily[t + ' Total Energy Cost Cum [$]']
-            + cost_daily[t + ' RTP Cost Cum [$]']
-            - cost_daily[t + ' Export Revenue Cum [$]']
-        )
+        if daily:
+            # Guard against missing daily columns when no full days were processed
+            for c in range(3):
+                col = t + ' Demand Period ' + str(c) + ' Cost Cum [$]'
+                if col not in cost_daily.columns:
+                    cost_daily[col] = np.nan
+            for col in [t + ' Demand Coincident Cost Cum [$]', t + ' Energy Cost Cum [$]',
+                        t + ' RTP Cost Cum [$]', t + ' Export Revenue Cum [$]']:
+                if col not in cost_daily.columns:
+                    cost_daily[col] = 0.0
+            cost_daily[t + ' Total Demand Cost Cum [$]'] = (
+                cost_daily[[t + ' Demand Period ' + str(c) + ' Cost Cum [$]' for c in range(3)]].sum(axis=1)
+                + cost_daily[t + ' Demand Coincident Cost Cum [$]']
+            )
+            cost_daily[t + ' Total Energy Cost Cum [$]'] = (
+                cost_daily[t + ' Energy Cost Cum [$]'] + cost_daily[t + ' Total Demand Cost Cum [$]']
+            )
+            cost_daily[t + ' Net Energy Cost Cum [$]'] = (
+                cost_daily[t + ' Total Energy Cost Cum [$]']
+                + cost_daily[t + ' RTP Cost Cum [$]']
+                - cost_daily[t + ' Export Revenue Cum [$]']
+            )
 
     if daily:
         return cost, cost_daily
