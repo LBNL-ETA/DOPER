@@ -23,9 +23,8 @@ def default_config():
         # (start_h, end_h, mode, rate)
         # rate [kW] overrides window calculation when set
         'tou_windows': [
-            (0, 6, 'charge', None),
-            (6, 9, 'idle', None),
-            (9, 15, 'charge', None),
+            (0, 10, 'charge', None),
+            (10, 15, 'idle', None),
             (15, 21, 'discharge', None),
             (21, 24, 'idle', None),
         ],
@@ -50,6 +49,8 @@ def _size_power(mode, hour_float, window_end_h, bat, config):
     capacity = bat['capacity']
     max_charge = bat['power_charge']
     max_discharge = bat['power_discharge']
+    eff_charge = bat['efficiency_charging']
+    eff_discharge = bat['efficiency_discharging']
     safety_factor = config['safety_factor']
     hours_remaining = max(window_end_h - hour_float, config['min_hours_remaining'])
 
@@ -57,13 +58,13 @@ def _size_power(mode, hour_float, window_end_h, bat, config):
         energy_needed = max(0.0, (soc_max - soc) * capacity)
         if energy_needed <= 0.0:
             return 0.0
-        return min(max_charge, energy_needed / hours_remaining * safety_factor)
+        return min(max_charge, energy_needed / eff_charge / hours_remaining * safety_factor)
 
     if mode == 'discharge':
         energy_needed = max(0.0, (soc - soc_min) * capacity)
         if energy_needed <= 0.0:
             return 0.0
-        return -min(max_discharge, energy_needed / hours_remaining * safety_factor)
+        return -min(max_discharge, energy_needed * eff_discharge / hours_remaining * safety_factor)
 
     return 0.0
 
@@ -74,11 +75,12 @@ def _apply_safety_overrides(power_kw, mode, bat, cfg, log):
     soc_max = bat['soc_max']
     capacity = bat['capacity']
     max_charge = bat['power_charge']
+    eff_charge = bat['efficiency_charging']
     name = bat['name']
 
     if soc < soc_min:
         energy_needed = max(0.0, (soc_max - soc) * capacity)
-        power_kw = min(max_charge, energy_needed / cfg['emergency_recovery_hours'] * cfg['safety_factor'])
+        power_kw = min(max_charge, energy_needed / eff_charge / cfg['emergency_recovery_hours'] * cfg['safety_factor'])
         log['overrides'].append(f'{name}: soc {soc:.3f} <= soc_min, emergency charge {power_kw:.2f} kW')
     elif soc >= soc_max and mode == 'charge':
         power_kw = 0.0

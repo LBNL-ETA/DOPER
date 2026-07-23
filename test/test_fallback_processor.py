@@ -21,7 +21,8 @@ def _make_data(hour=2):
     return pd.DataFrame({'load_demand': [10.0]}, index=[ts])
 
 def _make_bat(name='bat', soc=0.5, soc_min=0.2, soc_max=1.0,
-              capacity=200.0, power_charge=50.0, power_discharge=50.0):
+              capacity=200.0, power_charge=50.0, power_discharge=50.0,
+              efficiency_charging=1.0, efficiency_discharging=1.0):
     """Helper: minimal battery parameter dict."""
     return {
         'name': name,
@@ -31,6 +32,8 @@ def _make_bat(name='bat', soc=0.5, soc_min=0.2, soc_max=1.0,
         'capacity': capacity,
         'power_charge': power_charge,
         'power_discharge': power_discharge,
+        'efficiency_charging': efficiency_charging,
+        'efficiency_discharging': efficiency_discharging,
     }
 
 def _make_param(bat=None):
@@ -57,8 +60,8 @@ class TestDefaultConfig(unittest.TestCase):
         for key in ('tou_windows', 'safety_factor', 'min_hours_remaining', 'emergency_recovery_hours'):
             self.assertIn(key, cfg)
 
-    def test_tou_windows_has_five_entries(self):
-        self.assertEqual(len(default_config()['tou_windows']), 5)
+    def test_tou_windows_has_four_entries(self):
+        self.assertEqual(len(default_config()['tou_windows']), 4)
 
     def test_modes_are_lowercase(self):
         cfg = default_config()
@@ -81,7 +84,7 @@ class TestGetWindow(unittest.TestCase):
     def test_overnight_returns_charge(self):
         mode, end_h, rate = _get_window(0.0, self.cfg)
         self.assertEqual(mode, 'charge')
-        self.assertEqual(end_h, 6)
+        self.assertEqual(end_h, 10)
         self.assertIsNone(rate)
 
     def test_overnight_midpoint(self):
@@ -89,13 +92,13 @@ class TestGetWindow(unittest.TestCase):
         self.assertEqual(mode, 'charge')
 
     def test_morning_boundary_is_idle(self):
-        mode, _, rate = _get_window(6.0, self.cfg)
+        mode, _, rate = _get_window(10.0, self.cfg)
         self.assertEqual(mode, 'idle')
         self.assertIsNone(rate)
 
     def test_midday_window(self):
         mode, end_h, _ = _get_window(12.0, self.cfg)
-        self.assertEqual(mode, 'charge')
+        self.assertEqual(mode, 'idle')
         self.assertEqual(end_h, 15)
 
     def test_peak_window_is_discharge(self):
@@ -113,7 +116,7 @@ class TestGetWindow(unittest.TestCase):
 
     def test_rate_returned_when_set(self):
         cfg = default_config()
-        cfg['tou_windows'][3] = (15, 21, 'discharge', 30.0)
+        cfg['tou_windows'][2] = (15, 21, 'discharge', 30.0)
         _, _, rate = _get_window(18.0, cfg)
         self.assertEqual(rate, 30.0)
 
@@ -132,11 +135,25 @@ class TestSizePower(unittest.TestCase):
         self.assertEqual(power, 0.0)
 
     def test_charge_sized_by_energy(self):
-        # safety_factor=1.0, 4 h remaining, fill 0.5->1.0 on 200 kWh = 100 kWh
+        # safety_factor=1.0, eff=1.0, 4 h remaining, fill 0.5->1.0 on 200 kWh = 100 kWh
         bat = _make_bat(soc=0.5)
         power = _size_power('charge', 2.0, 6.0, bat, self.cfg)
         expected = min(50, 100 / 4.0 * self.sf)
         self.assertAlmostEqual(power, expected, places=6)
+
+    def test_charge_efficiency_increases_power(self):
+        # lower efficiency → more grid power needed to store same energy
+        bat_eff = _make_bat(soc=0.5, efficiency_charging=0.9)
+        bat_unit = _make_bat(soc=0.5, efficiency_charging=1.0)
+        power_eff = _size_power('charge', 2.0, 6.0, bat_eff, self.cfg)
+        power_unit = _size_power('charge', 2.0, 6.0, bat_unit, self.cfg)
+        self.assertGreater(power_eff, power_unit)
+
+    def test_charge_efficiency_exact(self):
+        # energy_needed=100 kWh, 4 h, eff=0.8 → 100/0.8/4 = 31.25 kW
+        bat = _make_bat(soc=0.5, efficiency_charging=0.8)
+        power = _size_power('charge', 2.0, 6.0, bat, self.cfg)
+        self.assertAlmostEqual(power, 31.25, places=6)
 
     def test_charge_capped_at_max_charge(self):
         bat = _make_bat(soc=0.2, capacity=200, power_charge=50)
@@ -164,6 +181,20 @@ class TestSizePower(unittest.TestCase):
         bat = _make_bat(soc=0.2)
         power = _size_power('discharge', 18.0, 21.0, bat, self.cfg)
         self.assertEqual(power, 0.0)
+
+    def test_discharge_efficiency_reduces_power(self):
+        # lower efficiency → less AC power delivered (smaller magnitude, closer to zero)
+        bat_eff = _make_bat(soc=0.8, efficiency_discharging=0.9)
+        bat_unit = _make_bat(soc=0.8, efficiency_discharging=1.0)
+        power_eff = _size_power('discharge', 18.0, 21.0, bat_eff, self.cfg)
+        power_unit = _size_power('discharge', 18.0, 21.0, bat_unit, self.cfg)
+        self.assertGreater(power_eff, power_unit) # -36 > -40; eff<1 yields less negative value
+
+    def test_discharge_efficiency_exact(self):
+        # energy_soc=120 kWh, 3 h, eff=0.9 → -120*0.9/3 = -36 kW
+        bat = _make_bat(soc=0.8, efficiency_discharging=0.9)
+        power = _size_power('discharge', 18.0, 21.0, bat, self.cfg)
+        self.assertAlmostEqual(power, -36.0, places=6)
 
 
 # _apply_safety_overrides tests
@@ -198,6 +229,17 @@ class TestApplySafetyOverrides(unittest.TestCase):
         self.assertEqual(power_kw, 20.0)
         self.assertEqual(len(self.log['overrides']), 0)
 
+    def test_emergency_charge_accounts_for_efficiency(self):
+        # energy_needed=(1.0-0.1)*200=180 kWh, recovery=2h, eff=0.9
+        # grid power = 180/0.9/2 = 100 kW, capped at power_charge=50
+        bat = _make_bat(soc=0.1, soc_min=0.2, soc_max=1.0, capacity=200,
+                        power_charge=50, efficiency_charging=0.9)
+        bat_unit = _make_bat(soc=0.1, soc_min=0.2, soc_max=1.0, capacity=200,
+                             power_charge=50, efficiency_charging=1.0)
+        power_eff = _apply_safety_overrides(0.0, 'idle', bat, self.cfg, self.log)
+        power_unit = _apply_safety_overrides(0.0, 'idle', bat_unit, self.cfg, self.log)
+        self.assertGreaterEqual(power_eff, power_unit) # lower eff needs more grid power
+
 
 # battery_tou_processor integration tests
 class TestBatteryTouProcessor(unittest.TestCase):
@@ -231,7 +273,7 @@ class TestBatteryTouProcessor(unittest.TestCase):
         self.assertGreater(setpoints['Battery bat Power Command [kW]'], 0.0)
 
     def test_idle_window_gives_zero_power(self):
-        data = _make_data(hour=7)
+        data = _make_data(hour=11) # idle window 10-15
         setpoints, _ = battery_tou_processor(data, _make_param(_make_bat(soc=0.5)))
         self.assertEqual(setpoints['Battery bat Power Command [kW]'], 0.0)
 
