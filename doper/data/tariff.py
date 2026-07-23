@@ -341,6 +341,36 @@ def get_test1_tariff():
     tariff['winter']['demand_coincident'] = 17.74 # $/kW for coincident
     return tariff
 
+def get_b10_2026_tariff():
+    """PG&E B-10 tariff (March 1, 2026)"""
+    tariff = {}
+    tariff['name'] = 'PG&E B-10 tariff (March 1, 2026)'
+    tariff['tz'] = "America/Los_Angeles"
+    tariff['seasons'] = {0:0,1:0,2:0,3:0,4:0,5:0,6:1,7:1,8:1,9:1,10:0,11:0,12:0}
+    tariff['seasons_map'] = {0:'winter', 1:'summer'}
+
+    tariff['summer'] = {'hours': {}, 'energy': {}, 'demand': {}, 'demand_coincident': {}}
+    tariff['summer']['hours']['weekday'] = {0:0,1:0,2:0,3:0,4:0,5:0,6:0,7:0,8:0,9:0,10:0,11:0, \
+                                 12:0,13:0,14:1,15:1,16:2,17:2,18:2,19:2,20:2,21:1,22:1,23:0}
+    tariff['summer']['hours']['weekend'] = {0:0,1:0,2:0,3:0,4:0,5:0,6:0,7:0,8:0,9:0,10:0,11:0, \
+                                 12:0,13:0,14:1,15:1,16:2,17:2,18:2,19:2,20:2,21:1,22:1,23:0}
+    tariff['summer']['energy'] = {0:0.24522, 1:0.27778, 2:0.33947} # $/kWh for periods 0-offpeak, 1-midpeak, 2-onpeak
+    tariff['summer']['export'] = {0:0.1, 1:0.1, 2:0.1}
+    tariff['summer']['demand'] = {0:0, 1:0, 2:0} # $/kW for periods 0-offpeak, 1-midpeak, 2-onpeak
+    tariff['summer']['demand_coincident'] = 20.5 # $/kW for coincident
+
+    tariff['winter'] = {'hours': {}, 'energy': {}, 'demand': {}, 'demand_coincident': {}}
+    tariff['winter']['hours']['weekday'] = {0:0,1:0,2:0,3:0,4:0,5:0,6:0,7:0,8:0,9:1,10:1,11:1, \
+                                 12:1,13:1,14:0,15:0,16:2,17:2,18:2,19:2,20:2,21:0,22:0,23:0}
+    tariff['winter']['hours']['weekend'] = {0:0,1:0,2:0,3:0,4:0,5:0,6:0,7:0,8:0,9:1,10:1,11:1, \
+                                 12:1,13:1,14:0,15:0,16:2,17:2,18:2,19:2,20:2,21:0,22:0,23:0}
+    tariff['winter']['energy'] = {0:0.22773, 1:0.19139, 2:0.26321} # $/kWh for periods 0-offpeak, 1-midpeak, 2-onpeak
+    tariff['winter']['export'] = {0:0.1, 1:0.1, 2:0.1}
+    tariff['winter']['demand'] = {0:0, 1:0, 2:0} # $/kW for periods 0-offpeak, 1-midpeak, 2-onpeak
+    tariff['winter']['demand_coincident'] = 20.5 # $/kW for coincident
+
+    return tariff
+
 def get_tariff(tariff='e19-2018'):
     """High level utility to get tariff.
 
@@ -388,6 +418,8 @@ def get_tariff(tariff='e19-2018'):
         return get_bge_gs_2022_tariff()
     if tariff == 'test1':
         return get_test1_tariff()
+    if tariff == 'b10-2026':
+        return get_b10_2026_tariff()
     raise ValueError(f'Tariff "{tariff}" not found.')
 
 if __name__ == '__main__':
