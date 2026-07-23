@@ -106,9 +106,11 @@ def calculate_energy_cost(data, tariff, types=None, col_suffix='_Net Load [kW]',
                 load_col = t + col_suffix
                 energy_cost_col = t + ' Energy Cost [$]'
 
-                # Filter full days only
-                if day_counts[load_col].sum() > full_day:
+                # Use full days where available; fall back to partial days
+                if day_counts[load_col].sum() > 0:
                     full_days_idx = day_counts.index[day_counts[load_col] == full_day]
+                    if len(full_days_idx) == 0:
+                        full_days_idx = day_counts.index[day_counts[load_col] > 0]
                     df = dfx[dfx.index.normalize().isin(full_days_idx)].copy()
                     cost.loc[ix, t + ' Measured Days'] = len(df[load_col]) / full_day
                     cost.loc[ix, t + ' Filled Days'] = 0
