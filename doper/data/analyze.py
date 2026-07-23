@@ -288,6 +288,16 @@ def calculate_energy_cost(data, tariff, types=None, col_suffix='_Net Load [kW]',
 
     # total cost
     for t in types:
+        # Ensure all required columns exist even if no full days were processed
+        for c in range(3):
+            col = t + ' Demand Period ' + str(c) + ' Cost [$]'
+            if col not in cost.columns:
+                cost[col] = np.nan
+        for col in [t + ' Demand Coincident Cost [$]', t + ' Energy Cost [$]',
+                    t + ' RTP Cost [$]', t + ' Export Revenue [$]']:
+            if col not in cost.columns:
+                cost[col] = 0.0
+
         cost[t + ' Total Demand Cost [$]'] = (
             cost[[t + ' Demand Period ' + str(c) + ' Cost [$]' for c in range(3)]].sum(axis=1)
             + cost[t + ' Demand Coincident Cost [$]']
