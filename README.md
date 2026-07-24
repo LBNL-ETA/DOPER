@@ -187,7 +187,9 @@ parameter['setpoint_processor_config'] = {
 }
 ```
 
-A ready-to-use TOU-based fallback for battery storage is provided in `doper.data.fallback_processor`:
+Two ready-to-use fallback processors for battery storage are provided in `doper.data.fallback_processor`.
+
+**`battery_tou_processor`** — TOU schedule-based fallback. Charge, discharge, or idle according to time-of-use windows:
 
 ```python
 parameter['controller']['fb_processor'] = {
@@ -196,7 +198,16 @@ parameter['controller']['fb_processor'] = {
 }
 ```
 
-The fallback processor returns `(setpoints, log)` where `setpoints` keys are formatted strings (battery display name substituted via `%s`) and values are plain floats. `log` contains `hour`, `messages`, and `overrides`. The key template is **required** and must be provided via `parameter['controller']['setpoint_names']['battery_power']`.
+**`battery_soc_processor`** — SOC-target fallback. Drives each battery toward a pre-defined target state of charge regardless of time of day:
+
+```python
+parameter['controller']['fb_processor'] = {
+    "module": "doper.data.fallback_processor",
+    "name": "battery_soc_processor"
+}
+```
+
+Both processors return `(setpoints, log)` where `setpoints` keys are formatted strings (battery display name substituted via `%s`) and values are plain floats. `log` contains `hour`, `messages`, and `overrides`. The key template is **required** and must be provided via `parameter['controller']['setpoint_names']['battery_power']`.
 
 ##### Setpoint names
 
@@ -230,6 +241,44 @@ def my_sp_processor(data, parameter):
 ```
 
 When `battery_name_map` is empty (the default), the internal battery `name` is used as-is. When a battery is not listed in `battery_name_map`, it also falls back to the internal name.
+
+##### `battery_soc_processor` configuration
+
+Behaviour is controlled via `parameter['battery_soc_processor_config']`. The processor reads the same `tou_windows` structure as `battery_tou_processor`, but **ignores the mode field** — charge/discharge direction is determined entirely by comparing `soc_initial` to `soc_target`:
+
+- `soc < soc_target` → charge
+- `soc > soc_target` → discharge
+- `soc == soc_target` → idle (0 W)
+
+The `rate` field of the matching window controls power magnitude:
+- `rate is None` → use the maximum hardware rate (`power_charge` / `power_discharge`)
+- `rate is set` → use that value [kW], clipped to hardware limits
+
+`soc_target` accepts either a **float** (applied to all batteries) or a **list** (one value per battery, matched by position to `parameter['batteries']`):
+
+```python
+parameter['battery_soc_processor_config'] = {
+    'soc_target': 0.8,          # scalar: all batteries target 80 % SOC
+    # or
+    'soc_target': [0.9, 0.6],   # list: first battery → 90 %, second → 60 %
+
+    # tou_windows rate field limits power magnitude (mode field is ignored)
+    'tou_windows': [
+        (0,  8,  'charge', None,  False),  # rate=None → charge at full power_charge
+        (8,  18, 'charge', 20.0,  False),  # rate=20 kW → charge capped at 20 kW
+        (18, 24, 'charge', None,  False),
+    ],
+    'safety_factor': 1.0,
+    'emergency_recovery_hours': 2.0,
+    'setpoint_scale': 1,
+}
+```
+
+SOC safety overrides always apply on top of the target logic (identical to `battery_tou_processor`):
+- `soc < soc_min` → emergency charge sized to recover within `emergency_recovery_hours`
+- `soc >= soc_max` during a charge command → power set to 0
+
+##### `battery_tou_processor` configuration
 
 The TOU schedule and all sizing parameters can be overridden via `parameter['battery_tou_processor_config']`:
 

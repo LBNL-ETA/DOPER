@@ -12,6 +12,7 @@ from doper.data.fallback_processor import (
     _size_power,
     _apply_safety_overrides,
     battery_tou_processor,
+    battery_soc_processor,
     default_config,
 )
 
@@ -710,6 +711,179 @@ class TestBatteryTouProcessor(unittest.TestCase):
         setpoints, _ = battery_tou_processor(data, param)
         self.assertAlmostEqual(setpoints['Battery bat Power Command [kW]'], 20.0, places=3)
 
+
+# battery_soc_processor tests
+class TestBatterySocProcessor(unittest.TestCase):
+    """Tests for battery_soc_processor."""
+
+    KEY = 'Battery bat Power Command [kW]'
+
+    def _run(self, bat, hour=3, extra_cfg=None):
+        """Helper: run battery_soc_processor with one battery at the given hour."""
+        data = _make_data(hour=hour)
+        param = _make_param(bat)
+        if extra_cfg is not None:
+            param['battery_soc_processor_config'] = extra_cfg
+        return battery_soc_processor(data, param)
+
+    # Guard cases (shared with tou processor)
+    def test_returns_empty_when_parameter_is_none(self):
+        setpoints, log = battery_soc_processor(None, None)
+        self.assertEqual(setpoints, {})
+        self.assertIn('messages', log)
+
+    def test_returns_empty_when_no_batteries(self):
+        setpoints, _ = battery_soc_processor(None, {'controller': {}})
+        self.assertEqual(setpoints, {})
+
+    # Float soc_target — direction
+    def test_float_target_charges_when_below(self):
+        # soc=0.5, target=0.8 → charge
+        bat = _make_bat(soc=0.5)
+        setpoints, _ = self._run(bat, extra_cfg={'soc_target': 0.8})
+        self.assertGreater(setpoints[self.KEY], 0.0)
+
+    def test_float_target_discharges_when_above(self):
+        # soc=0.9, target=0.5 → discharge
+        bat = _make_bat(soc=0.9)
+        setpoints, _ = self._run(bat, extra_cfg={'soc_target': 0.5})
+        self.assertLess(setpoints[self.KEY], 0.0)
+
+    def test_float_target_idle_when_equal(self):
+        # soc == target → idle
+        bat = _make_bat(soc=0.8)
+        setpoints, _ = self._run(bat, extra_cfg={'soc_target': 0.8})
+        self.assertEqual(setpoints[self.KEY], 0.0)
+
+    # Rate = None → max hardware rate
+    def test_rate_none_charge_uses_max_power_charge(self):
+        # default tou_windows at hour=3 has rate=None; soc<target → charge at power_charge
+        bat = _make_bat(soc=0.5, power_charge=40.0)
+        setpoints, _ = self._run(bat, extra_cfg={'soc_target': 1.0,
+            'tou_windows': [(0, 24, 'charge', None, False)]})
+        self.assertAlmostEqual(setpoints[self.KEY], 40.0, places=3)
+
+    def test_rate_none_discharge_uses_max_power_discharge(self):
+        bat = _make_bat(soc=0.9, power_discharge=35.0)
+        setpoints, _ = self._run(bat, extra_cfg={'soc_target': 0.5,
+            'tou_windows': [(0, 24, 'discharge', None, False)]})
+        self.assertAlmostEqual(setpoints[self.KEY], -35.0, places=3)
+
+    # Rate set → use rate clipped to hardware limits
+    def test_rate_set_limits_charge_power(self):
+        # rate=20, power_charge=50 → min(20,50)=20
+        bat = _make_bat(soc=0.5, power_charge=50.0)
+        setpoints, _ = self._run(bat, extra_cfg={'soc_target': 1.0,
+            'tou_windows': [(0, 24, 'charge', 20.0, False)]})
+        self.assertAlmostEqual(setpoints[self.KEY], 20.0, places=3)
+
+    def test_rate_set_clipped_to_max_charge(self):
+        # rate=80, power_charge=50 → min(80,50)=50
+        bat = _make_bat(soc=0.5, power_charge=50.0)
+        setpoints, _ = self._run(bat, extra_cfg={'soc_target': 1.0,
+            'tou_windows': [(0, 24, 'charge', 80.0, False)]})
+        self.assertAlmostEqual(setpoints[self.KEY], 50.0, places=3)
+
+    def test_rate_set_limits_discharge_power(self):
+        # rate=-15 (or positive 15), power_discharge=50 → -min(15,50)=-15
+        bat = _make_bat(soc=0.9, power_discharge=50.0)
+        setpoints, _ = self._run(bat, extra_cfg={'soc_target': 0.5,
+            'tou_windows': [(0, 24, 'discharge', 15.0, False)]})
+        self.assertAlmostEqual(setpoints[self.KEY], -15.0, places=3)
+
+    def test_rate_set_clipped_to_max_discharge(self):
+        # rate=80, power_discharge=50 → -min(80,50)=-50
+        bat = _make_bat(soc=0.9, power_discharge=50.0)
+        setpoints, _ = self._run(bat, extra_cfg={'soc_target': 0.5,
+            'tou_windows': [(0, 24, 'discharge', 80.0, False)]})
+        self.assertAlmostEqual(setpoints[self.KEY], -50.0, places=3)
+
+    # List soc_target
+    def test_list_target_applies_per_battery(self):
+        """Each battery gets its own soc_target from the list."""
+        bat1 = _make_bat(name='bat1', soc=0.3, power_charge=50, power_discharge=50)
+        bat2 = _make_bat(name='bat2', soc=0.9, power_charge=50, power_discharge=50)
+        data = _make_data(hour=3)
+        param = {
+            'batteries': [bat1, bat2],
+            'controller': {'setpoint_names': {'battery_power': 'Battery %s Power Command [kW]'}},
+            'battery_soc_processor_config': {
+                # bat1 soc=0.3 < target=0.8 → charge; bat2 soc=0.9 > target=0.5 → discharge
+                'soc_target': [0.8, 0.5],
+                'tou_windows': [(0, 24, 'charge', None, False)],
+            },
+        }
+        setpoints, _ = battery_soc_processor(data, param)
+        self.assertGreater(setpoints['Battery bat1 Power Command [kW]'], 0.0)
+        self.assertLess(setpoints['Battery bat2 Power Command [kW]'], 0.0)
+
+    def test_list_target_idle_when_at_target(self):
+        """Battery whose soc equals its list entry is idle."""
+        bat1 = _make_bat(name='bat1', soc=0.8, power_charge=50, power_discharge=50)
+        bat2 = _make_bat(name='bat2', soc=0.5, power_charge=50, power_discharge=50)
+        data = _make_data(hour=3)
+        param = {
+            'batteries': [bat1, bat2],
+            'controller': {'setpoint_names': {'battery_power': 'Battery %s Power Command [kW]'}},
+            'battery_soc_processor_config': {
+                'soc_target': [0.8, 0.5],
+                'tou_windows': [(0, 24, 'charge', None, False)],
+            },
+        }
+        setpoints, _ = battery_soc_processor(data, param)
+        self.assertEqual(setpoints['Battery bat1 Power Command [kW]'], 0.0)
+        self.assertEqual(setpoints['Battery bat2 Power Command [kW]'], 0.0)
+
+    def test_float_target_applies_to_all_batteries(self):
+        """Scalar soc_target charges / discharges every battery consistently."""
+        bat1 = _make_bat(name='bat1', soc=0.3, power_charge=50, power_discharge=50)
+        bat2 = _make_bat(name='bat2', soc=0.3, power_charge=30, power_discharge=30)
+        data = _make_data(hour=3)
+        param = {
+            'batteries': [bat1, bat2],
+            'controller': {'setpoint_names': {'battery_power': 'Battery %s Power Command [kW]'}},
+            'battery_soc_processor_config': {
+                'soc_target': 1.0,
+                'tou_windows': [(0, 24, 'charge', None, False)],
+            },
+        }
+        setpoints, _ = battery_soc_processor(data, param)
+        self.assertGreater(setpoints['Battery bat1 Power Command [kW]'], 0.0)
+        self.assertGreater(setpoints['Battery bat2 Power Command [kW]'], 0.0)
+
+    # Safety overrides
+    def test_soc_below_min_forces_charge(self):
+        bat = _make_bat(soc=0.1, soc_min=0.2)
+        # target above soc, so charge anyway; override should still fire
+        setpoints, log = self._run(bat, extra_cfg={'soc_target': 0.8})
+        self.assertGreater(setpoints[self.KEY], 0.0)
+        self.assertTrue(len(log['overrides']) > 0)
+
+    def test_soc_at_max_during_charge_gives_zero(self):
+        bat = _make_bat(soc=1.0, soc_max=1.0)
+        # soc == soc_max == target (default 1.0) → idle; safety override also applies
+        setpoints, _ = self._run(bat)
+        self.assertEqual(setpoints[self.KEY], 0.0)
+
+    # Log structure
+    def test_log_has_required_keys(self):
+        data = _make_data(hour=3)
+        _, log = battery_soc_processor(data, _make_param(_make_bat()))
+        for key in ('messages', 'overrides', 'hour'):
+            self.assertIn(key, log)
+
+    def test_log_hour_matches_data_timestamp(self):
+        data = _make_data(hour=7)
+        _, log = battery_soc_processor(data, _make_param(_make_bat()))
+        self.assertAlmostEqual(log['hour'], 7.0, places=6)
+
+    def test_setpoint_value_is_float(self):
+        data = _make_data(hour=3)
+        setpoints, _ = battery_soc_processor(data, _make_param(_make_bat(soc=0.5)))
+        self.assertIsInstance(setpoints[self.KEY], float)
+
+    def test_default_soc_target_is_float(self):
+        self.assertIsInstance(default_config()['soc_target'], float)
 
 
 if __name__ == '__main__':

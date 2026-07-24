@@ -207,9 +207,13 @@ def battery_soc_processor(data, parameter):
     template = sp_names['battery_power']
     battery_name_map = sp_names['battery_name_map'] if 'battery_name_map' in sp_names else {}
 
-    soc_target = cfg['soc_target']
+    soc_target_cfg = cfg['soc_target']
 
-    for bat in batteries:
+    for i, bat in enumerate(batteries):
+        if isinstance(soc_target_cfg, list):
+            soc_target = soc_target_cfg[i]
+        else:
+            soc_target = soc_target_cfg
         soc = bat['soc_initial']
 
         if soc < soc_target:
