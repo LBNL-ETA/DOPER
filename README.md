@@ -262,19 +262,30 @@ parameter['battery_soc_processor_config'] = {
     # or
     'soc_target': [0.9, 0.6],   # list: first battery → 90 %, second → 60 %
 
-    # tou_windows rate field limits power magnitude (mode field is ignored)
+    # Deadband: battery is idle when |soc - soc_target| <= soc_deadband (applies always)
+    'soc_deadband': 0.05,       # default 5 % — idle within ±5 % of target
+
+    # tou_windows rate field controls power magnitude (mode field is ignored)
     'tou_windows': [
-        (0,  8,  'charge', None,  False),  # rate=None → charge at full power_charge
-        (8,  18, 'charge', 20.0,  False),  # rate=20 kW → charge capped at 20 kW
+        (0,  8,  'charge', None,  False),  # rate=None → size to reach target in one timestep
+        (8,  18, 'charge', 20.0,  False),  # rate=20 kW → fixed rate, clipped to hardware limit
         (18, 24, 'charge', None,  False),
     ],
+
+    # When rate is None the setpoint is sized to reach soc_target within one timestep:
+    #   charge power = (soc_target - soc) * capacity / eff_charge / dt * safety_factor
+    #   discharge power = (soc - soc_target) * capacity * eff_discharge / dt * safety_factor
+    # dt is inferred from data.index[1] - data.index[0] when data has ≥ 2 rows,
+    # otherwise falls back to timestep_hours below.
+    'timestep_hours': 0.25,     # fallback control interval [h] (default 15 min)
+
     'safety_factor': 1.0,
     'emergency_recovery_hours': 2.0,
     'setpoint_scale': 1,
 }
 ```
 
-SOC safety overrides always apply on top of the target logic (identical to `battery_tou_processor`):
+SOC safety overrides always apply on top of the target and deadband logic (identical to `battery_tou_processor`):
 - `soc < soc_min` → emergency charge sized to recover within `emergency_recovery_hours`
 - `soc >= soc_max` during a charge command → power set to 0
 

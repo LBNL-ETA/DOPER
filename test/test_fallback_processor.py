@@ -718,9 +718,15 @@ class TestBatterySocProcessor(unittest.TestCase):
 
     KEY = 'Battery bat Power Command [kW]'
 
-    def _run(self, bat, hour=3, extra_cfg=None):
+    def _run(self, bat, hour=3, extra_cfg=None, nrows=1):
         """Helper: run battery_soc_processor with one battery at the given hour."""
-        data = _make_data(hour=hour)
+        if nrows == 1:
+            data = _make_data(hour=hour)
+        else:
+            # multi-row data so timestep can be inferred
+            ts0 = pd.Timestamp(f'2019-01-01 {hour:02d}:00:00')
+            ts1 = pd.Timestamp(f'2019-01-01 {hour:02d}:15:00')
+            data = pd.DataFrame({'load_demand': [10.0, 10.0]}, index=[ts0, ts1])
         param = _make_param(bat)
         if extra_cfg is not None:
             param['battery_soc_processor_config'] = extra_cfg
@@ -736,38 +742,124 @@ class TestBatterySocProcessor(unittest.TestCase):
         setpoints, _ = battery_soc_processor(None, {'controller': {}})
         self.assertEqual(setpoints, {})
 
-    # Float soc_target — direction
+    # Float soc_target — direction (differences > deadband so action is taken)
     def test_float_target_charges_when_below(self):
-        # soc=0.5, target=0.8 → charge
+        # soc=0.5, target=0.8, diff=0.3 > deadband=0.05 → charge
         bat = _make_bat(soc=0.5)
-        setpoints, _ = self._run(bat, extra_cfg={'soc_target': 0.8})
+        setpoints, _ = self._run(bat, extra_cfg={'soc_target': 0.8, 'soc_deadband': 0.05})
         self.assertGreater(setpoints[self.KEY], 0.0)
 
     def test_float_target_discharges_when_above(self):
-        # soc=0.9, target=0.5 → discharge
+        # soc=0.9, target=0.5, diff=0.4 > deadband=0.05 → discharge
         bat = _make_bat(soc=0.9)
-        setpoints, _ = self._run(bat, extra_cfg={'soc_target': 0.5})
+        setpoints, _ = self._run(bat, extra_cfg={'soc_target': 0.5, 'soc_deadband': 0.05})
         self.assertLess(setpoints[self.KEY], 0.0)
 
     def test_float_target_idle_when_equal(self):
-        # soc == target → idle
+        # soc == target → within deadband → idle
         bat = _make_bat(soc=0.8)
-        setpoints, _ = self._run(bat, extra_cfg={'soc_target': 0.8})
+        setpoints, _ = self._run(bat, extra_cfg={'soc_target': 0.8, 'soc_deadband': 0.05})
         self.assertEqual(setpoints[self.KEY], 0.0)
 
-    # Rate = None → max hardware rate
-    def test_rate_none_charge_uses_max_power_charge(self):
-        # default tou_windows at hour=3 has rate=None; soc<target → charge at power_charge
-        bat = _make_bat(soc=0.5, power_charge=40.0)
-        setpoints, _ = self._run(bat, extra_cfg={'soc_target': 1.0,
-            'tou_windows': [(0, 24, 'charge', None, False)]})
-        self.assertAlmostEqual(setpoints[self.KEY], 40.0, places=3)
+    # Rate = None → timestep-based sizing
+    def test_rate_none_charge_sized_to_reach_target(self):
+        # soc=0.5, target=1.0, diff=0.5, capacity=200 → energy=100 kWh
+        # timestep=0.25 h (config), eff=1.0, sf=1.0 → power=100/1.0/0.25=400 → capped at 50
+        bat = _make_bat(soc=0.5, power_charge=50.0)
+        setpoints, _ = self._run(bat, extra_cfg={'soc_target': 1.0, 'soc_deadband': 0.0,
+            'timestep_hours': 0.25, 'tou_windows': [(0, 24, 'charge', None, False)]})
+        self.assertAlmostEqual(setpoints[self.KEY], 50.0, places=3)
 
-    def test_rate_none_discharge_uses_max_power_discharge(self):
-        bat = _make_bat(soc=0.9, power_discharge=35.0)
-        setpoints, _ = self._run(bat, extra_cfg={'soc_target': 0.5,
-            'tou_windows': [(0, 24, 'discharge', None, False)]})
-        self.assertAlmostEqual(setpoints[self.KEY], -35.0, places=3)
+    def test_rate_none_charge_exact_sizing(self):
+        # soc=0.9, target=1.0 (deadband=0), diff=0.1, capacity=200 → energy=20 kWh
+        # timestep=0.25 h, eff=1.0, sf=1.0 → power=20/0.25=80 → capped at 50
+        bat = _make_bat(soc=0.9, power_charge=50.0)
+        setpoints, _ = self._run(bat, extra_cfg={'soc_target': 1.0, 'soc_deadband': 0.0,
+            'timestep_hours': 0.25, 'tou_windows': [(0, 24, 'charge', None, False)]})
+        self.assertAlmostEqual(setpoints[self.KEY], 50.0, places=3)
+
+    def test_rate_none_charge_uncapped_exact(self):
+        # soc=0.9, target=0.92 (deadband=0), diff=0.02, capacity=200 → energy=4 kWh
+        # timestep=0.25 h, eff=1.0, sf=1.0 → power=4/0.25=16 kW (below power_charge=50)
+        bat = _make_bat(soc=0.9, power_charge=50.0)
+        setpoints, _ = self._run(bat, extra_cfg={'soc_target': 0.92, 'soc_deadband': 0.0,
+            'timestep_hours': 0.25, 'tou_windows': [(0, 24, 'charge', None, False)]})
+        self.assertAlmostEqual(setpoints[self.KEY], 16.0, places=3)
+
+    def test_rate_none_discharge_sized_to_reach_target(self):
+        # soc=0.9, target=0.5, diff=0.4, capacity=200 → energy=80 kWh
+        # timestep=0.25 h, eff=1.0, sf=1.0 → power=80/0.25=320 → capped at 50
+        bat = _make_bat(soc=0.9, power_discharge=50.0)
+        setpoints, _ = self._run(bat, extra_cfg={'soc_target': 0.5, 'soc_deadband': 0.0,
+            'timestep_hours': 0.25, 'tou_windows': [(0, 24, 'discharge', None, False)]})
+        self.assertAlmostEqual(setpoints[self.KEY], -50.0, places=3)
+
+    def test_rate_none_discharge_uncapped_exact(self):
+        # soc=0.52, target=0.5 (deadband=0), diff=0.02, capacity=200 → energy=4 kWh
+        # timestep=0.25 h, eff=1.0, sf=1.0 → power=4*1.0/0.25=16 kW (below power_discharge=50)
+        bat = _make_bat(soc=0.52, power_discharge=50.0)
+        setpoints, _ = self._run(bat, extra_cfg={'soc_target': 0.5, 'soc_deadband': 0.0,
+            'timestep_hours': 0.25, 'tou_windows': [(0, 24, 'discharge', None, False)]})
+        self.assertAlmostEqual(setpoints[self.KEY], -16.0, places=3)
+
+    def test_rate_none_timestep_from_data_index(self):
+        # Multi-row data: 15 min interval → timestep=0.25 h (inferred from index)
+        # soc=0.9, target=0.92 (deadband=0), diff=0.02, capacity=200, eff=1, sf=1
+        # power = 0.02*200/1.0/0.25 = 16 kW
+        bat = _make_bat(soc=0.9, power_charge=50.0)
+        setpoints, log = self._run(bat, extra_cfg={'soc_target': 0.92, 'soc_deadband': 0.0,
+            'tou_windows': [(0, 24, 'charge', None, False)]}, nrows=2)
+        self.assertAlmostEqual(setpoints[self.KEY], 16.0, places=3)
+        self.assertTrue(any('inferred' in m for m in log['messages']))
+
+    def test_rate_none_safety_factor_scales_power(self):
+        # sf=2: power = energy/eff/dt*2, still capped at power_charge
+        # soc=0.9, target=0.92 (deadband=0), diff=0.02, cap=200, eff=1, dt=0.25
+        # power = 0.02*200/1.0/0.25*2 = 32 kW
+        bat = _make_bat(soc=0.9, power_charge=50.0)
+        setpoints, _ = self._run(bat, extra_cfg={'soc_target': 0.92, 'soc_deadband': 0.0,
+            'safety_factor': 2.0, 'timestep_hours': 0.25,
+            'tou_windows': [(0, 24, 'charge', None, False)]})
+        self.assertAlmostEqual(setpoints[self.KEY], 32.0, places=3)
+
+    # Deadband
+    def test_deadband_idle_when_within_band(self):
+        # soc=0.8, target=0.8, deadband=0.05 → |diff|=0 ≤ 0.05 → idle
+        bat = _make_bat(soc=0.8)
+        setpoints, _ = self._run(bat, extra_cfg={'soc_target': 0.8, 'soc_deadband': 0.05})
+        self.assertEqual(setpoints[self.KEY], 0.0)
+
+    def test_deadband_idle_at_upper_edge(self):
+        # soc=0.85, target=0.8, deadband=0.05 → |diff|=0.05 ≤ 0.05 → idle
+        bat = _make_bat(soc=0.85)
+        setpoints, _ = self._run(bat, extra_cfg={'soc_target': 0.8, 'soc_deadband': 0.05})
+        self.assertEqual(setpoints[self.KEY], 0.0)
+
+    def test_deadband_idle_at_lower_edge(self):
+        # soc=0.75, target=0.8, deadband=0.05 → |diff|=0.05 ≤ 0.05 → idle
+        bat = _make_bat(soc=0.75)
+        setpoints, _ = self._run(bat, extra_cfg={'soc_target': 0.8, 'soc_deadband': 0.05})
+        self.assertEqual(setpoints[self.KEY], 0.0)
+
+    def test_deadband_charges_just_outside_lower_edge(self):
+        # soc=0.74, target=0.8, deadband=0.05 → soc < 0.75 → charge
+        bat = _make_bat(soc=0.74, power_charge=50.0)
+        setpoints, _ = self._run(bat, extra_cfg={'soc_target': 0.8, 'soc_deadband': 0.05,
+            'timestep_hours': 0.25, 'tou_windows': [(0, 24, 'charge', None, False)]})
+        self.assertGreater(setpoints[self.KEY], 0.0)
+
+    def test_deadband_discharges_just_outside_upper_edge(self):
+        # soc=0.86, target=0.8, deadband=0.05 → soc > 0.85 → discharge
+        bat = _make_bat(soc=0.86, power_discharge=50.0)
+        setpoints, _ = self._run(bat, extra_cfg={'soc_target': 0.8, 'soc_deadband': 0.05,
+            'timestep_hours': 0.25, 'tou_windows': [(0, 24, 'discharge', None, False)]})
+        self.assertLess(setpoints[self.KEY], 0.0)
+
+    def test_deadband_zero_disables_deadband(self):
+        # soc=0.8, target=0.8, deadband=0 → exactly at target → idle (equal)
+        bat = _make_bat(soc=0.8)
+        setpoints, _ = self._run(bat, extra_cfg={'soc_target': 0.8, 'soc_deadband': 0.0})
+        self.assertEqual(setpoints[self.KEY], 0.0)
 
     # Rate set → use rate clipped to hardware limits
     def test_rate_set_limits_charge_power(self):

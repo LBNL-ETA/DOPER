@@ -35,6 +35,8 @@ def default_config():
         'emergency_recovery_hours': 2.0, # charging time when soc < soc_min
         'setpoint_scale': 1, # scale of setpoint
         'soc_target': 1.0, # target SOC for battery_soc_processor
+        'soc_deadband': 0.05, # idle when |soc - soc_target| <= soc_deadband
+        'timestep_hours': 0.25, # fallback control interval [h] when not inferrable from data
     }
 
 def _get_window(hour_float, config):
@@ -208,24 +210,38 @@ def battery_soc_processor(data, parameter):
     battery_name_map = sp_names['battery_name_map'] if 'battery_name_map' in sp_names else {}
 
     soc_target_cfg = cfg['soc_target']
+    soc_deadband = cfg['soc_deadband']
+    safety_factor = cfg['safety_factor']
+
+    # Infer timestep from data index; fall back to config value
+    if isinstance(data, pd.DataFrame) and len(data) >= 2:
+        dt = data.index[1] - data.index[0]
+        timestep_hours = dt.total_seconds() / 3600.0
+        log['messages'].append(f'timestep inferred from data: {timestep_hours:.4f} h')
+    else:
+        timestep_hours = cfg['timestep_hours']
+        log['messages'].append(f'timestep from config: {timestep_hours:.4f} h')
 
     for i, bat in enumerate(batteries):
-        if isinstance(soc_target_cfg, list):
-            soc_target = soc_target_cfg[i]
-        else:
-            soc_target = soc_target_cfg
+        soc_target = soc_target_cfg[i] if isinstance(soc_target_cfg, list) else soc_target_cfg
         soc = bat['soc_initial']
 
-        if soc < soc_target:
+        if soc < soc_target - soc_deadband:
             mode = 'charge'
             if rate is None:
-                power_kw = bat['power_charge']
+                # Size to reach soc_target in one timestep, scaled by safety_factor
+                energy_needed = (soc_target - soc) * bat['capacity']
+                power_kw = min(bat['power_charge'],
+                               energy_needed / bat['efficiency_charging'] / timestep_hours * safety_factor)
             else:
                 power_kw = min(abs(rate), bat['power_charge'])
-        elif soc > soc_target:
+        elif soc > soc_target + soc_deadband:
             mode = 'discharge'
             if rate is None:
-                power_kw = -bat['power_discharge']
+                # Size to reach soc_target in one timestep, scaled by safety_factor
+                energy_needed = (soc - soc_target) * bat['capacity']
+                power_kw = -min(bat['power_discharge'],
+                                energy_needed * bat['efficiency_discharging'] / timestep_hours * safety_factor)
             else:
                 power_kw = -min(abs(rate), bat['power_discharge'])
         else:
