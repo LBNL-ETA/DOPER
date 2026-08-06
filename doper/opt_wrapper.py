@@ -46,13 +46,14 @@ class DoperWrapper(eFMU):
             "ext-logs": None,
         }
         self.init = True
+        self._last_config = None
         self.parameter = None
         self.res = None
         self.smart_der = None
         self.sp_processor = None
         self.fb_processor = None
         self.expected_states = None
-        self.state_log = None
+        self.state_log = pd.DataFrame()
 
     def _to_forecast_df(self, fc):
         """Convert forecast JSON into dataframe."""
@@ -96,7 +97,11 @@ class DoperWrapper(eFMU):
 
         try:
             if not msg:
-                if self.init:
+
+                # check if config changed
+                config_changed = self.input["config"] != self._last_config
+
+                if self.init or config_changed:
 
                     # load config
                     if self.input["config"]:
@@ -120,8 +125,8 @@ class DoperWrapper(eFMU):
 
                     # initialize expected states from initial parameter
                     self.expected_states = init_expected_states(self.parameter)
-                    self.state_log = pd.DataFrame()
 
+                    self._last_config = self.input["config"]
                     self.init = False
 
                 # parse state_inputs before applying (needed for comparison logging)
