@@ -21,6 +21,7 @@ import numpy as np
 import pandas as pd
 import urllib.request
 import datetime as dtm
+from pvlib.location import Location
 
 warnings.filterwarnings('ignore', message='The forecast module algorithms and features are highly experimental.')
 warnings.filterwarnings('ignore', message="The HRRR class was deprecated in pvlib 0.9.1 and will be removed in a future release.")
@@ -38,15 +39,14 @@ from fmlc.baseclasses import eFMU
 datetime_mask = "20[0-9][0-9]-[0-1][0-9]-[0-3][0-9] [0-2][0-9]:[0-5][0-9]:[0-5][0-9]"
 
 FC_TO_PVLIV_MAP = {
-    '9:Total Cloud Cover:% (instant):lambert:atmosphere:level 0 -': 'Total_cloud_cover_entire_atmosphere',
-    '7:2 metre temperature:K (instant):lambert:heightAboveGround:level 2 m': 'Temperature_height_above_ground',
-    'wind_speed_u': 0,
-    'wind_speed_v': 0,
-    'Low_cloud_cover_low_cloud': 0,
-    'Medium_cloud_cover_middle_cloud': 0,
-    'High_cloud_cover_high_cloud': 0,
+    'Total Cloud Cover:% (instant):lambert:atmosphere:level 0 -': 'total_clouds',
+    '2 metre temperature:K (instant):lambert:heightAboveGround:level 2 m': 'Temperature_height_above_ground',
+    'Low cloud cover:% (instant):lambert:lowCloudLayer:level 0': 'low_clouds',
+    'Medium cloud cover:% (instant):lambert:middleCloudLayer:level 0': 'mid_clouds',
+    'High cloud cover:% (instant):lambert:highCloudLayer:level 0': 'high_clouds',
+    '10 metre U wind component:m s**-1 (instant):lambert:heightAboveGround:level 10 m': 'wind_speed_u',
+    '10 metre V wind component:m s**-1 (instant):lambert:heightAboveGround:level 10 m': 'wind_speed_v',
     'Pressure_surface': 0,
-    'Wind_speed_gust_surface': 0
 }
 
 def download_latest_hrrr(lat, lon, dt, hour, tmp_dir='',
@@ -61,9 +61,10 @@ def download_latest_hrrr(lat, lon, dt, hour, tmp_dir='',
     url = f'https://nomads.ncep.noaa.gov/cgi-bin/filter_hrrr_2d.pl?dir=%2F'
     fname = f'hrrr.t{dt.strftime("%H")}z.wrfsfcf{hour:02}.grib2'
     url += f'hrrr.{dt.strftime("%Y%m%d")}%2Fconus&file={fname}'
-    url += f'&var_TCDC=on&var_TMP=on&all_lev=on&subregion=&'
-    # url += f'&var_TCDC=on&var_TMP=on&lev_2_m_above_ground=on&subregion=&'
-    url += f'toplat={int(lat+1)}&leftlon={int(lon-1)}&rightlon={int(lon+1)}&bottomlat={int(lat-1)}'
+    url += f'&var_TMP=on&lev_2_m_above_ground=on' # temperature
+    url += f'&var_TCDC=on&var_HCDC=on&var_LCDC=on&var_MCDC=on&all_lev=on' # clouds
+    url += f'&var_UGRD=on&var_VGRD=on&lev_10_m_above_ground=on' # wind
+    url += f'&subregion=&toplat={int(lat+1)}&leftlon={int(lon-1)}&rightlon={int(lon+1)}&bottomlat={int(lat-1)}'
     
     # download forecast
     fname = os.path.join(tmp_dir, fname)
@@ -103,6 +104,7 @@ def get_nearest_data(lat, lon, fname):
            'x': x, 'y': y}
     for g in grib:
         name = str(g).split(':fcst time')[0]
+        name = name.split(':', 1)[1]
         res[name] = g.values[x, y]
 
     return res
@@ -183,7 +185,8 @@ def get_noaa_hrrr_forecast(config, start_time, tz, forecaster=None, pvlib_proces
     if not forecaster:
         forecaster = get_hrrr_forecast
         pvlib_processor = HRRR()
-        pvlib_processor.set_location(start_time.tz, config['lat'], config['lon'])
+        # pvlib_processor.set_location(start_time.tz, config['lat'], config['lon']) # not using alt
+        pvlib_processor.location = Location(config['lat'], config['lon'], altitude=config['alt'], tz=start_time.tz)
 
     # ensure tmp dir exists
     if not os.path.exists(config['tmp_dir']):
@@ -231,13 +234,16 @@ def process_forecast(forecast, config, tz, pvlib_processor):
     """Process HRRR forecast through pvlib to compute irradiance and temperature."""
 
     # map to pvlib column names
-    direct = {k: v for k, v in FC_TO_PVLIV_MAP.items() if isinstance(v, str)}
+    direct = {k: v for k, v in FC_TO_PVLIV_MAP.items()
+              if isinstance(v, str) and k in forecast.columns}
     pvlib_fc = forecast[direct.keys()].copy(deep=True).rename(columns=direct)
+
     # fill computed fields with defaults
     computed = {k: v for k, v in FC_TO_PVLIV_MAP.items() if not isinstance(v, str)}
     for k, v in computed.items():
         pvlib_fc[k] = v
     pvlib_fc.index = pvlib_fc.index.tz_localize(tz)
+
     # duplicate last row (pvlib bug workaround)
     pvlib_fc.loc[pvlib_fc.index[-1]+pd.DateOffset(hours=1), :] = pvlib_fc.iloc[-1]
     data = pvlib_processor.process_data(pvlib_fc)
@@ -245,6 +251,21 @@ def process_forecast(forecast, config, tz, pvlib_processor):
     data.index = data.index.tz_localize(None)
     data = data[config['output_cols'].keys()]
 
+    # add solar position
+    if config['add_solpos']:
+        pvlib_processor.location
+        solpos = pvlib_processor.location.get_solarposition(pvlib_fc.index[:-1])
+        airmass = pvlib_processor.location.get_airmass(pvlib_fc.index[:-1])
+        clearsky = pvlib_processor.location.get_clearsky(pvlib_fc.index[:-1],
+                                                         model='ineichen',
+                                                         solar_position=solpos)
+        data['alt'] = solpos["apparent_elevation"].values
+        data['azi'] = solpos["azimuth"].values
+        data['zenith'] = solpos["apparent_zenith"].values
+        data['airmass'] = airmass["airmass_relative"].mask(solpos["apparent_elevation"] < 1, 0.0).values
+        data['ghi_cs'] = clearsky['ghi'].values
+        data['dhi_cs'] = clearsky['dhi'].values
+    
     return data
 
 class weather_forecaster(eFMU):
@@ -392,6 +413,7 @@ def get_default_config():
     # config['name'] = 'Berkeley'
     config['lat'] = 37.8715
     config['lon'] = -122.2501
+    config['alt'] = 50 # m
     config['tz'] = 'US/Pacific'
     config['horizon'] = 16
     config['tmp_dir'] = 'tmp'
@@ -399,14 +421,17 @@ def get_default_config():
     config['source'] = 'noaa_hrrr'
     config['refresh_time'] = 15*60 # 15 minutes
     config['json_return'] = True
-    config['forecast_cols'] = {
-        '9:Total Cloud Cover:% (instant):lambert:atmosphere:level 0 -': [0, 100],
-        '7:2 metre temperature:K (instant):lambert:heightAboveGround:level 2 m': [200, 400]
-    }
+    config['add_solpos'] = True
+    config['forecast_cols'] = {}
     config['output_cols'] = {'temp_air': [-50, 50],
                              'ghi': [0, 1000],
                              'dni': [0, 1500],
-                             'dhi': [0, 1000]}
+                             'dhi': [0, 1000],
+                             'low_clouds': [0, 100],
+                             'mid_clouds': [0, 100],
+                             'high_clouds': [0, 100],
+                             'total_clouds': [0, 100],
+                             'wind_speed': [0, 150]}
     return config
 
 if __name__ == '__main__':
