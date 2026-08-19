@@ -230,6 +230,41 @@ def check_forecast(forecast, config, start_time, final_time):
 
     return forecast, msg
 
+def compute_solar_position(location, data, tz):
+    """Compute solar position and clear-sky irradiance for a given location and time index.
+
+    Derives the required tz-aware DatetimeIndex from ``data.index`` (which is expected
+    to be tz-naive) by re-localizing it with ``tz``.
+
+    Inputs
+    ------
+    location (pvlib.location.Location): pvlib Location object for the site.
+    data (pd.DataFrame): DataFrame whose tz-naive index defines the timestamps to evaluate.
+    tz (str): IANA time-zone string used to make ``data.index`` tz-aware.
+
+    Returns
+    -------
+    dict: Mapping of column names to numpy arrays:
+        - 'alt'     : apparent solar elevation (degrees)
+        - 'azi'     : solar azimuth (degrees)
+        - 'zenith'  : apparent solar zenith (degrees)
+        - 'airmass' : relative air mass (zeroed when elevation < 1 degree)
+        - 'ghi_cs'  : clear-sky GHI from Ineichen model (W/m²)
+        - 'dhi_cs'  : clear-sky DHI from Ineichen model (W/m²)
+    """
+    times = data.index.tz_localize(tz)
+    solpos = location.get_solarposition(times)
+    airmass = location.get_airmass(times)
+    clearsky = location.get_clearsky(times, model='ineichen', solar_position=solpos)
+    return {
+        'alt':     solpos["apparent_elevation"].values,
+        'azi':     solpos["azimuth"].values,
+        'zenith':  solpos["apparent_zenith"].values,
+        'airmass': airmass["airmass_relative"].mask(solpos["apparent_elevation"] < 1, 0.0).values,
+        'ghi_cs':  clearsky['ghi'].values,
+        'dhi_cs':  clearsky['dhi'].values,
+    }
+
 def process_forecast(forecast, config, tz, pvlib_processor):
     """Process HRRR forecast through pvlib to compute irradiance and temperature."""
 
@@ -251,21 +286,12 @@ def process_forecast(forecast, config, tz, pvlib_processor):
     data.index = data.index.tz_localize(None)
     data = data[config['output_cols'].keys()]
 
-    # add solar position
+    # add solar position and clear-sky irradiance
     if config['add_solpos']:
-        pvlib_processor.location
-        solpos = pvlib_processor.location.get_solarposition(pvlib_fc.index[:-1])
-        airmass = pvlib_processor.location.get_airmass(pvlib_fc.index[:-1])
-        clearsky = pvlib_processor.location.get_clearsky(pvlib_fc.index[:-1],
-                                                         model='ineichen',
-                                                         solar_position=solpos)
-        data['alt'] = solpos["apparent_elevation"].values
-        data['azi'] = solpos["azimuth"].values
-        data['zenith'] = solpos["apparent_zenith"].values
-        data['airmass'] = airmass["airmass_relative"].mask(solpos["apparent_elevation"] < 1, 0.0).values
-        data['ghi_cs'] = clearsky['ghi'].values
-        data['dhi_cs'] = clearsky['dhi'].values
-    
+        solpos_cols = compute_solar_position(pvlib_processor.location, data, tz)
+        for col, values in solpos_cols.items():
+            data[col] = values
+
     return data
 
 class weather_forecaster(eFMU):
