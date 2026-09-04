@@ -420,8 +420,9 @@ class weather_forecaster(eFMU):
         # use last valid forecast as fallback
         if self.msg == '':
             # store last valid forecast
-            self.last_valid_forecast = self.forecast.copy()
-            self.last_valid_forecast_time = now
+            if not use_stored:
+                self.last_valid_forecast = self.forecast.copy()
+                self.last_valid_forecast_time = now
         elif self.last_valid_forecast is not None:
             self.forecast = self.last_valid_forecast.copy()
             if self.config['source'] == 'noaa_hrrr' and self.pvlib_processor is not None:
