@@ -11,7 +11,7 @@ import sys
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from pyomo.environ import ConcreteModel, Set, Param, Var, Constraint, Binary
+from pyomo.environ import Any as PyomoAny, ConcreteModel, Set, Param, Var, Constraint, Binary
 import logging
 
 def get_root(f=None):
@@ -62,7 +62,14 @@ def base_model(inputs, parameter):
    
     accounting_ts = [t for t in model.ts][0:-2] # Timestep for accounting (cutoff last timestep)
     model.accounting_ts = accounting_ts
-    
+
+    # issue_time for plotting
+    issue_time_str = pd.Timestamp(inputs.index[0], unit='s').strftime('%Y-%m-%dT%H:%M:%S')
+    model.issue_time = Param(model.ts,
+                             initialize={ts: issue_time_str for ts in inputs.index},
+                             within=PyomoAny,
+                             doc='issue time of optimization (first forecast timestamp)')
+
     # Default Node set (singlnode) if network dict not in inputs, or only 1 node in input
     # check to see if network is present# check to see if network is present
     if 'network' not in parameter.keys():

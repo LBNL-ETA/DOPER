@@ -550,3 +550,33 @@ example_line =  {
 ```
 
 Note: Unlike DER assets, line-types are generic and can be applied to multiple node connections in duplicate without requiring multiple defined line types.
+
+---
+
+#### 14. Requesting model outputs via `output_list`
+
+Once DOPER solves the Pyomo model, it generates a pandas DataFrame of timeseries results. The columns included are controlled by the `output_list` argument passed when instantiating `DOPER`. Each entry is a dict with a `data` key that names a Pyomo variable or parameter on the model, and a `df_label` key that becomes the output column name. An optional `index` key handles variables with a second index dimension (e.g. per-battery variables).
+
+In addition to user-defined Pyomo variables, DOPER provides a set of **special output variables** — constant Pyomo `Param` objects defined on the base model that expose run metadata rather than optimization decisions. These follow the same `output_list` interface.
+
+##### Special output variables
+
+| `data` key | Description | Output type |
+|---|---|---|
+| `issue_time` | Timestamp of the first row of the forecast input, i.e. the point in time at which this optimization was issued. The same value is repeated for every timestep row. Useful when results from multiple runs are concatenated, as it allows each row to be traced back to the forecast horizon that produced it. | `str` (`%Y-%m-%dT%H:%M:%S`) |
+
+Example:
+```python
+from doper.utility import default_output_list
+
+output_list = default_output_list(parameter)
+output_list.append({
+    'data': 'issue_time',
+    'df_label': 'Issue Time of Opt'
+})
+
+smartDER = DOPER(model=control_model,
+                 parameter=parameter,
+                 solver_path=solver_path,
+                 output_list=output_list)
+```
