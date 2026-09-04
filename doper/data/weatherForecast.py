@@ -359,11 +359,13 @@ class weather_forecaster(eFMU):
         
         # check if stored forecast can be reused
         refresh_time = self.config.get('refresh_time', None)
+        hour_match = self.last_valid_forecast is not None and \
+            now_ts.hour == self.last_valid_forecast.index[0].hour
         use_stored = (
             refresh_time is not None and
             self.last_valid_forecast is not None and
             (now - self.last_valid_forecast_time) < refresh_time and
-            now_ts.hour == self.last_valid_forecast.index[0].hour
+            (self.config['update_st_refresh'] or hour_match)
         )
 
         # get forecast
@@ -372,6 +374,9 @@ class weather_forecaster(eFMU):
             if use_stored:
                 # reuse last valid forecast within refresh window
                 self.forecast = self.last_valid_forecast.copy()
+                if self.config['update_st_refresh']:
+                    offset = start_time.tz_localize(None) - self.forecast.index[0]
+                    self.forecast.index = self.forecast.index + offset
 
             elif self.config['source'] == 'noaa_hrrr':
                 # download hrrr forecast
@@ -437,27 +442,28 @@ class weather_forecaster(eFMU):
 def get_default_config():
     config = {}
     # config['name'] = 'Berkeley'
-    config['lat'] = 37.8715
-    config['lon'] = -122.2501
-    config['alt'] = 50 # m
-    config['tz'] = 'US/Pacific'
-    config['horizon'] = 16
-    config['tmp_dir'] = 'tmp'
-    config['debug'] = False
-    config['source'] = 'noaa_hrrr'
-    config['refresh_time'] = 15*60 # 15 minutes
-    config['json_return'] = True
-    config['add_solpos'] = True
-    config['forecast_cols'] = {}
-    config['output_cols'] = {'temp_air': [-50, 50],
-                             'ghi': [0, 1000],
-                             'dni': [0, 1500],
-                             'dhi': [0, 1000],
-                             'low_clouds': [0, 100],
-                             'mid_clouds': [0, 100],
-                             'high_clouds': [0, 100],
-                             'total_clouds': [0, 100],
-                             'wind_speed': [0, 150]}
+    config['lat'] = 37.8715 # site latitude (degrees)
+    config['lon'] = -122.2501 # site longitude (degrees)
+    config['alt'] = 50 # site altitude (m)
+    config['tz'] = 'US/Pacific' # local time zone
+    config['horizon'] = 16 # forecast horizon (hours)
+    config['tmp_dir'] = 'tmp' # directory for grib downloads
+    config['debug'] = False # verbose output and keep temp files
+    config['source'] = 'noaa_hrrr' # forecast source
+    config['refresh_time'] = 15*60 # minimum seconds between downloads
+    config['update_st_refresh'] = True # align cached index to current start_time
+    config['json_return'] = True # return output as JSON string
+    config['add_solpos'] = True # append solar position columns
+    config['forecast_cols'] = {} # expected raw forecast column ranges
+    config['output_cols'] = {'temp_air': [-50, 50], # air temperature (C)
+                             'ghi': [0, 1000], # global horizontal irradiance (W/m2)
+                             'dni': [0, 1500], # direct normal irradiance (W/m2)
+                             'dhi': [0, 1000], # diffuse horizontal irradiance (W/m2)
+                             'low_clouds': [0, 100], # low cloud cover (%)
+                             'mid_clouds': [0, 100], # mid cloud cover (%)
+                             'high_clouds': [0, 100], # high cloud cover (%)
+                             'total_clouds': [0, 100], # total cloud cover (%)
+                             'wind_speed': [0, 150]} # wind speed (m/s)
     return config
 
 if __name__ == '__main__':
