@@ -49,6 +49,7 @@ The content of `parameter['controller']` is as follows:
 * `log_dir` [str] path to logging directory
 * `instance_id` [str] instance identifier
 * `log_overtime` [int] log when solve time exceeds this value (seconds)
+* `fill_df_infeasible` [bool] controls the shape of the result DataFrame when the solver returns a non-optimal termination (default: `False`). See [Infeasible Result DataFrame](#15-infeasible-result-dataframe) for details.
 * `sp_processor` [dict or None] optional post-processing callable used by `DoperWrapper` to parse optimization outputs into `output['setpoints']`.
   * `None` disables setpoint post-processing.
   * If provided, must be:
@@ -579,4 +580,25 @@ smartDER = DOPER(model=control_model,
                  parameter=parameter,
                  solver_path=solver_path,
                  output_list=output_list)
+```
+
+---
+
+#### 15. Infeasible Result DataFrame
+
+When `do_optimization` returns a non-optimal termination (infeasible, time-limit, etc.), the result DataFrame `df` still has the same column set and order as a successful solve. The behaviour is controlled by `parameter['controller']['fill_df_infeasible']`:
+
+| Value | Rows | Column values |
+|---|---|---|
+| `False` (default) | 0 | — |
+| `True` | One per timestep | Pyomo `Param` columns filled with pre-solve input values; decision `Var` columns are `NaN` |
+
+`Param`-backed columns (e.g. `Tariff Energy Period [-]`, `Temperature [C]`, `PV Power [kW]`) are set at model construction time and are always available. `Var`-backed columns (e.g. `Import Power [kW]`, `Battery Charging Power [kW]`) carry no solution and will be `NaN`.
+
+```python
+# Option 1 (default): zero-row df, correct columns — clearly signals failure
+parameter['controller']['fill_df_infeasible'] = False
+
+# Option 2: timestep-indexed df — useful to inspect the input schedule on infeasibility
+parameter['controller']['fill_df_infeasible'] = True
 ```

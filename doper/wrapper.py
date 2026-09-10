@@ -109,26 +109,39 @@ class DOPER:
         self.model = self._model(data, self.parameter)
         self.model_loaded = True
 
+    def _get_result_columns(self):
+        """Return the canonical ordered column list for the results df."""
+        output_list = self.output_list
+        if output_list is None:
+            output_list = default_output_list(self.parameter)
+
+        columns = []
+        for item in output_list:
+            if 'index' not in item:
+                columns.append(item['df_label'])
+            else:
+                try:
+                    index2 = list(getattr(self.model, item['index']).ordered_data())
+                except Exception:
+                    index2 = []
+                for ii in index2:
+                    try:
+                        columns.append(item['df_label'] % ii)
+                    except TypeError:
+                        columns.append(f"{item['df_label']}{ii}")
+
+        if 'Tariff Energy Period [-]' in columns:
+            columns.append('Tariff Energy [$/kWh]')
+        return columns
+
     def write_ts_results(self):
         '''
-            function dynamicly generates timeseries results dataframe, based on 
+            function dynamicly generates timeseries results dataframe, based on
             settings defined in parameter['system']
-            
-            Parameters
-            ----------
-            model : pyomo.core.base.PyomoModel.ConcreteModel
-                solved pyomo model
-            parameter : dict
-                input parameter dict with 'system' field
-            conversion_data: list of dicts
-                list of dicts containing instructions
-                for which pyomo timeseries params and vars to include in results df
-                if none is provided, will be generated automatically
-            
+
             Returns
             -------
             df : pandas.core.frame.DataFrame
-                DESCRIPTION.
         '''
 
         # list of results data to be extracted
@@ -140,29 +153,24 @@ class DOPER:
         #   parameter['system']
 
         model = self.model
-        parameter = self.parameter
         output_list = self.output_list
 
         if output_list is None:
             output_list = default_output_list(self.parameter)
 
         # create empty df indexed by timestamps
-        df = pd.DataFrame(model.ts.ordered_data(), columns = ['timestep'])
-        df.set_index('timestep',inplace = True)
+        df = pd.DataFrame(model.ts.ordered_data(), columns=['timestep'])
+        df.set_index('timestep', inplace=True)
 
         # iterate through output instructions to add to df
         for outputItem in output_list:
-            dfColName = outputItem['df_label'] = outputItem['df_label']
+            dfColName = outputItem['df_label']
             tsDataDict = getattr(model, outputItem['data']).extract_values()
 
             # if output is only indexed by timestamp, add to dataframe
             if 'index' not in outputItem:
                 # create new df for output item
                 itemDf = pd.DataFrame.from_dict(tsDataDict, orient='index', columns=[dfColName])
-                # if df is empty, replace with itemDf, else merge with existing df
-                # if df.shape[0]==0:
-                #     df = itemDf
-                # else:
                 # if itemDf len is 0, something went wrong, skip item
                 if itemDf.shape[0] == 0:
                     logging.warning(f'Could not process output data for: {dfColName}')
@@ -171,22 +179,18 @@ class DOPER:
             else:
                 # process data for multi-dim timeseries data
                 # get items in second index set
-                # index2 = list(getattr(model, outputItem['index']).keys())
                 index2 = list(getattr(model, outputItem['index']).ordered_data())
                 # iterate through index 2 values
                 for ii in index2:
                     # create indexed column name for df
-                    # first try string interpolation
                     try:
-                        dfColNameIndexed = dfColName %ii
-                    except:
-                        # otherwise just append
+                        dfColNameIndexed = dfColName % ii
+                    except TypeError:
                         dfColNameIndexed = f'{dfColName}{ii}'
                     # create empty dict
                     dataDictIndexed = {}
 
                     for val in tsDataDict.items():
-
                         # check value of second index, if matches ii, add to dict
                         # val is in nested tuple form ((ts, index), value)
                         if val[0][1] == ii:
@@ -197,15 +201,18 @@ class DOPER:
                                                     columns=[dfColNameIndexed])
                     df = pd.merge(df, itemDf, left_index=True, right_index=True)
 
-        # construct extracted data into pandas dataframe
-        # df = pd.DataFrame(df).transpose()
-        # df.columns = columns
         df.index = pd.to_datetime(df.index, unit='s')
 
         # add energy price
         if 'Tariff Energy Period [-]' in df.columns:
             df['Tariff Energy [$/kWh]'] = \
                 df[['Tariff Energy Period [-]']].replace(pyomo_read_parameter(model.tariff_energy))
+
+        # enforce canonical column order
+        canonical = self._get_result_columns()
+        ordered = [c for c in canonical if c in df.columns]
+        df = df[ordered]
+
         self.results_df = df
         return df
 
@@ -334,11 +341,24 @@ class DOPER:
                 except Exception as e:
                     if print_error:
                         logger.warning(f'Could not load solutions:\n{e}')
-
-            # if self.pyomo_to_pandas and termination == TerminationCondition.optimal:
-            #     df = self.pyomo_to_pandas(self.model, self.parameter)
-            # else:
-            #     df = pd.DataFrame()
+            elif process_outputs:
+                fill = self.parameter['controller']['fill_df_infeasible']
+                try:
+                    canonical = self._get_result_columns()
+                    if fill:
+                        # Option 2: populate with pre-solve param values; Vars will be NaN
+                        df = self.write_ts_results()
+                        # add any columns that write_ts_results skipped, preserving order
+                        for col in canonical:
+                            if col not in df.columns:
+                                df[col] = None
+                        df = df[canonical]
+                    else:
+                        # Option 1: correct columns, zero rows
+                        df = pd.DataFrame(columns=canonical)
+                except Exception as e:
+                    if print_error:
+                        logger.warning(f'Could not build infeasible result df:\n{e}')
         return [time()-t_start, objective, df, self.model, result, termination, self.parameter]
 
 def make_doper(cfg):

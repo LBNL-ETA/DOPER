@@ -487,6 +487,27 @@ smartDER = DOPER(model=control_model,
 # Proceed with solving optimization as described in above step
 ```
 
+#### 6. Infeasible Result DataFrame
+
+When the solver returns an infeasible or otherwise non-optimal termination, `do_optimization` still returns a DataFrame `df` whose column set and order exactly match what a successful solve would produce. The behaviour is controlled by `parameter['controller']['fill_df_infeasible']` (default `False`):
+
+| Value | Rows | Columns | Use case |
+|---|---|---|---|
+| `False` (default) | 0 | All expected columns | Clearly signals failure; safe for downstream code that checks `len(df)` |
+| `True` | One per timestep | All expected columns | Input `Param` columns (tariff periods, temperature, PV) carry real pre-solve values; decision `Var` columns are `NaN` |
+
+```python
+# Option 1 (default): empty df, correct columns
+parameter['controller']['fill_df_infeasible'] = False
+
+# Option 2: timestep-indexed df; Params filled, Vars are NaN
+parameter['controller']['fill_df_infeasible'] = True
+```
+
+When `fill_df_infeasible=True`, columns backed by Pyomo `Param` objects (read-only inputs set at model construction time) will contain their actual scheduled values. Columns backed by decision `Var` objects carry no meaningful information and will be `NaN`, since the solver did not converge to a valid solution.
+
+In both cases the column order is identical to that of a feasible result, so downstream code that iterates over or indexes columns by name will behave consistently regardless of termination status.
+
 
 ## Example
 To illustrate the DOPER functionality, example Jupyter notebooks can be found [here](https://github.com/LBNL-ETA/DOPER/blob/master/examples/).

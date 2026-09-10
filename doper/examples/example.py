@@ -94,6 +94,7 @@ def default_parameter():
     parameter['controller']['log_dir'] = './logs' # Log dir
     parameter['controller']['instance_id'] = '1' # Instance ID
     parameter['controller']['log_overtime'] = 1*60 # Log when over time
+    parameter['controller']['fill_df_infeasible'] = False # When True, return pre-solve param values on infeasibility; when False return empty df with correct columns
     parameter['controller']['sp_processor'] = { # default battery setpoint processor
         "module": "doper.data.setpoint_processor",
         "name": "battery_setpoint_processor"
