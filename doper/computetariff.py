@@ -9,6 +9,8 @@ Compute tariff module.
 
 # pylint: disable=invalid-name, too-many-arguments, redefined-outer-name
 
+import pandas as pd
+
 def convert_tariff_dict(par=None, tariff=None):
     # tariff periods in parameter
     if par is not None:
@@ -78,21 +80,28 @@ def compute_periods(df, tariff, parameter, return_tariff=True, weekday_map=False
         tariff_map['export'] = tariff[season]['export']
     parameter['tariff'].update(tariff_map)
     # Build table
-    df['hour'] = df.index.hour
     if daytypes:
-        df['tariff_energy_map'] = \
-            df.index.map(lambda x: tariff[season]['hours'][daytype_map[x.weekday()]][x.hour])
+        tariff_energy_map = df.index.map(
+            lambda x: tariff[season]['hours'][daytype_map[x.weekday()]][x.hour]
+        )
     elif weekday_map:
-        df['tariff_energy_map'] = \
-            df[['weekday','hour']].apply(lambda x: \
-                tariff[season]['hours'][daytype_map[x[0]]][x[1]], axis=1)
+        tariff_energy_map = pd.DataFrame(
+            {'weekday': df['weekday'], 'hour': df.index.hour}
+        ).apply(lambda x: tariff[season]['hours'][daytype_map[x[0]]][x[1]], axis=1)
     else:
-        df['tariff_energy_map'] = \
-            [tariff[season]['hours'][h] for h in df.index.hour]
-    df['tariff_power_map'] = df['tariff_energy_map']
-    df['tariff_energy_export_map'] = 0
-    df['tariff_regup'] = 0
-    df['tariff_regdn'] = 0
+        tariff_energy_map = [tariff[season]['hours'][h] for h in df.index.hour]
+
+    new_cols = pd.DataFrame({
+        'hour': df.index.hour,
+        'tariff_energy_map': tariff_energy_map,
+        'tariff_power_map': tariff_energy_map,
+        'tariff_energy_export_map': 0,
+        'tariff_regup': 0,
+        'tariff_regdn': 0,
+    }, index=df.index)
+
+    df = df.drop(columns=[c for c in new_cols.columns if c in df.columns])
+    df = pd.concat([df, new_cols], axis=1).copy()
     df.index = df.index.tz_convert(f'Etc/GMT{-1*tz_df:+d}') \
         .tz_localize(None)
     if return_tariff:
