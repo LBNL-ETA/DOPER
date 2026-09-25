@@ -460,7 +460,7 @@ def get_default_config():
     config['debug'] = False # verbose output and keep temp files
     config['source'] = 'noaa_hrrr' # forecast source
     config['refresh_time'] = 15*60 # minimum seconds between downloads
-    config['update_st_refresh'] = True # shift output index by current sub-hour minutes
+    config['update_st_refresh'] = False # shift output index by current sub-hour minutes
     config['json_return'] = True # return output as JSON string
     config['add_solpos'] = True # append solar position columns
     config['forecast_cols'] = {} # expected raw forecast column ranges
