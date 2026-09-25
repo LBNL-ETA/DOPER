@@ -352,20 +352,24 @@ class weather_forecaster(eFMU):
         if now is None:
             now = time.time()
         now_ts = pd.to_datetime(now, unit='s')
-        now_ts = now_ts.replace(minute=0, second=0, microsecond=0, nanosecond=0)
-        now_ts = now_ts.tz_localize('UTC').tz_convert(tz)
+        now_ts = now_ts.tz_localize('UTC').tz_convert(tz).replace(second=0, microsecond=0, nanosecond=0)
+        now_ts_with_minutes = pd.to_datetime(now_ts)
+        now_ts = now_ts.replace(minute=0)
         start_time = pd.to_datetime(now_ts)
         final_time = start_time + pd.Timedelta(hours=self.config['horizon'])
-        
+
         # check if stored forecast can be reused
         refresh_time = self.config.get('refresh_time', None)
-        hour_match = self.last_valid_forecast is not None and \
-            now_ts.hour == self.last_valid_forecast.index[0].hour
+        hour_match = (
+            self.last_valid_forecast is not None and
+            now_ts.hour == self.last_valid_forecast.index[0].hour and
+            now_ts.date() == self.last_valid_forecast.index[0].date()
+        )
         use_stored = (
             refresh_time is not None and
             self.last_valid_forecast is not None and
             (now - self.last_valid_forecast_time) < refresh_time and
-            (self.config['update_st_refresh'] or hour_match)
+            hour_match
         )
 
         # get forecast
@@ -374,9 +378,6 @@ class weather_forecaster(eFMU):
             if use_stored:
                 # reuse last valid forecast within refresh window
                 self.forecast = self.last_valid_forecast.copy()
-                if self.config['update_st_refresh']:
-                    offset = start_time.tz_localize(None) - self.forecast.index[0]
-                    self.forecast.index = self.forecast.index + offset
 
             elif self.config['source'] == 'noaa_hrrr':
                 # download hrrr forecast
@@ -408,7 +409,14 @@ class weather_forecaster(eFMU):
 
                 # process through pvlib
                 if self.msg == '':
-                    self.data = process_forecast(self.forecast, self.config, tz, self.pvlib_processor)
+                    # shift forecast index to update minutes for pvlib
+                    forecast_for_pvlib = self.forecast
+                    if self.config['update_st_refresh']:
+                        minute_offset = now_ts_with_minutes.tz_localize(None) - start_time.tz_localize(None)
+                        if pd.Timedelta(0) < minute_offset < pd.Timedelta(hours=1):
+                            forecast_for_pvlib = self.forecast.copy()
+                            forecast_for_pvlib.index = forecast_for_pvlib.index + minute_offset
+                    self.data = process_forecast(forecast_for_pvlib, self.config, tz, self.pvlib_processor)
             except Exception as e:
                 self.msg += f'ERROR: {e}.\n\n{traceback.format_exc()}\n'
                 self.data = pd.DataFrame()
@@ -452,7 +460,7 @@ def get_default_config():
     config['debug'] = False # verbose output and keep temp files
     config['source'] = 'noaa_hrrr' # forecast source
     config['refresh_time'] = 15*60 # minimum seconds between downloads
-    config['update_st_refresh'] = True # align cached index to current start_time
+    config['update_st_refresh'] = True # shift output index by current sub-hour minutes
     config['json_return'] = True # return output as JSON string
     config['add_solpos'] = True # append solar position columns
     config['forecast_cols'] = {} # expected raw forecast column ranges
