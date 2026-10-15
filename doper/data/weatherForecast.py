@@ -252,7 +252,8 @@ def compute_solar_position(location, data, tz):
         - 'ghi_cs'  : clear-sky GHI from Ineichen model (W/m²)
         - 'dhi_cs'  : clear-sky DHI from Ineichen model (W/m²)
     """
-    times = data.index.tz_localize(tz)
+    # HRRR values are time-averaged so shift to interval midpoints
+    times = data.index.tz_localize(tz) - pd.Timedelta(minutes=30)
     solpos = location.get_solarposition(times)
     airmass = location.get_airmass(times)
     clearsky = location.get_clearsky(times, model='ineichen', solar_position=solpos)
@@ -279,11 +280,14 @@ def process_forecast(forecast, config, tz, pvlib_processor):
         pvlib_fc[k] = v
     pvlib_fc.index = pvlib_fc.index.tz_localize(tz)
 
+    # HRRR values are time-averaged so shift index to interval
+    pvlib_fc_mid = pvlib_fc.copy()
+    pvlib_fc_mid.index = pvlib_fc.index - pd.Timedelta(minutes=30)
+
     # duplicate last row (pvlib bug workaround)
-    pvlib_fc.loc[pvlib_fc.index[-1]+pd.DateOffset(hours=1), :] = pvlib_fc.iloc[-1]
-    data = pvlib_processor.process_data(pvlib_fc)
-    data = data.loc[pvlib_fc.index[:-1]]
-    data.index = data.index.tz_localize(None)
+    pvlib_fc_mid.loc[pvlib_fc_mid.index[-1]+pd.DateOffset(hours=1), :] = pvlib_fc_mid.iloc[-1]
+    data = pvlib_processor.process_data(pvlib_fc_mid)
+    data.index = pvlib_fc.index[:len(data)].tz_localize(None)
     data = data[config['output_cols'].keys()]
 
     # add solar position and clear-sky irradiance
@@ -460,7 +464,8 @@ def get_default_config():
     config['debug'] = False # verbose output and keep temp files
     config['source'] = 'noaa_hrrr' # forecast source
     config['refresh_time'] = 15*60 # minimum seconds between downloads
-    config['update_st_refresh'] = False # shift output index by current sub-hour minutes
+    config['update_st_refresh'] = False # shift output index by current sub-hour minutes and provide aligned
+    # solar measurements. All other measurements (temp_air, wind_speed, etc. are just reindexed, not aligned!)
     config['json_return'] = True # return output as JSON string
     config['add_solpos'] = True # append solar position columns
     config['forecast_cols'] = {} # expected raw forecast column ranges
