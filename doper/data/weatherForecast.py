@@ -252,9 +252,7 @@ def compute_solar_position(location, data, tz):
         - 'ghi_cs'  : clear-sky GHI from Ineichen model (W/m²)
         - 'dhi_cs'  : clear-sky DHI from Ineichen model (W/m²)
     """
-    # HRRR values are time-averaged so shift to interval midpoints
-    half_interval = (data.index[1] - data.index[0]) / 2
-    times = data.index.tz_localize(tz) - half_interval
+    times = data.index.tz_localize(tz)
     solpos = location.get_solarposition(times)
     airmass = location.get_airmass(times)
     clearsky = location.get_clearsky(times, model='ineichen', solar_position=solpos)
@@ -281,15 +279,11 @@ def process_forecast(forecast, config, tz, pvlib_processor):
         pvlib_fc[k] = v
     pvlib_fc.index = pvlib_fc.index.tz_localize(tz)
 
-    # HRRR values are time-averaged so shift index to interval
-    half_interval = (pvlib_fc.index[1] - pvlib_fc.index[0]) / 2
-    pvlib_fc_mid = pvlib_fc.copy()
-    pvlib_fc_mid.index = pvlib_fc.index - half_interval
-
     # duplicate last row (pvlib bug workaround)
-    pvlib_fc_mid.loc[pvlib_fc_mid.index[-1]+pd.DateOffset(hours=1), :] = pvlib_fc_mid.iloc[-1]
-    data = pvlib_processor.process_data(pvlib_fc_mid)
-    data.index = pvlib_fc.index[:len(data)].tz_localize(None)
+    pvlib_fc.loc[pvlib_fc.index[-1]+pd.DateOffset(hours=1), :] = pvlib_fc.iloc[-1]
+    data = pvlib_processor.process_data(pvlib_fc)
+    data = data.loc[pvlib_fc.index[:-1]]
+    data.index = data.index.tz_localize(None)
     data = data[config['output_cols'].keys()]
 
     # add solar position and clear-sky irradiance
